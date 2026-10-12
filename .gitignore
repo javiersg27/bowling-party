@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Tests / coverage
+coverage
+*.tsbuildinfo
+
+# OS
+Thumbs.db
+
+# Temporales de diagnóstico (nunca subir: contienen tokens/datos locales)
+.token*.json
+.pcstate*.json
+.probe.json
+.rpc*.json
+*.err

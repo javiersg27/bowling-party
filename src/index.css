@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Nunito", system-ui, sans-serif;
+  background: #14061f;
+  color: #fff7fb;
+}
+
+.arcade-bg {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 61, 138, 0.28), transparent 32%),
+    radial-gradient(circle at 85% 10%, rgba(36, 240, 255, 0.22), transparent 28%),
+    radial-gradient(circle at 50% 90%, rgba(139, 92, 255, 0.3), transparent 35%),
+    linear-gradient(180deg, #1a082c 0%, #14061f 55%, #07010d 100%);
+}
+
+.checker {
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 28px 28px;
+  background-position: 0 0, 0 14px, 14px -14px, -14px 0;
+}
+
+.btn-arcade {
+  @apply relative inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 font-black uppercase tracking-wide text-ink shadow-arcade transition active:translate-y-1 active:shadow-none;
+}
+
+.card-arcade {
+  @apply rounded-[1.6rem] border-4 border-white/20 bg-white/10 p-4 shadow-arcade backdrop-blur-md;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
