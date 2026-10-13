@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { partyStore } from "../data/store";
-import { ensureAnonymousSession, supabaseConfigured } from "../data/supabase";
+import { getSupabase, ensureAnonymousSession, supabaseConfigured } from "../data/supabase";
+import { LiveSync } from "../data/live";
 import { useGame } from "../game/GameContext";
 import { MODIFIER_CATALOG } from "../domain/modifiers";
 import { describeAssignment } from "../domain/assignment";
@@ -84,6 +85,16 @@ export function CreateTournamentPage() {
           },
         },
       });
+      // Empuje EXPLÍCITO y esperado del torneo recién creado. El push incremental
+      // del sink es "fire-and-forget": si la nube lo rechazaba (RLS, sesión aún no
+      // alineada…) el torneo se quedaba solo en local y el móvil no lo encontraba,
+      // sin que el usuario viera ningún error. Aquí subimos a propósito y, si la
+      // nube responde con error, lo mostramos en pantalla en lugar de tragarlo.
+      if (mode === "live" && supabaseConfigured()) {
+        const sync = new LiveSync(getSupabase(), () => {});
+        await sync.pushTournament(t);
+        await sync.ensureMembership(t.id, creatorId, "admin");
+      }
       nav(`/admin/t/${t.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");

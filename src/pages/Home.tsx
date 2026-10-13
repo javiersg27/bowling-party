@@ -6,7 +6,7 @@ import { useGame } from "../game/GameContext";
 import { partyStore } from "../data/store";
 
 export function HomePage() {
-  const { liveReady, mode, switchMode, becomeAdmin } = useGame();
+  const { liveReady, mode, switchMode, becomeAdmin, syncError } = useGame();
   const demo = partyStore.state.tournaments[0];
 
   return (
@@ -70,6 +70,11 @@ export function HomePage() {
             </BigButton>
           </Link>
         </div>
+        {syncError && (
+          <p className="mt-4 rounded-2xl border-2 border-neon-pink bg-neon-pink/10 p-3 text-sm">
+            <b>No se pudo sincronizar con la nube:</b> {syncError}
+          </p>
+        )}
       </div>
     </div>
   );

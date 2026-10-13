@@ -87,15 +87,19 @@ export class PartyStore {
    * propósito: no conocemos el contenido real de la nube y borrar a ciegas sería
    * destructivo.
    */
+  /** Fija el último error de sync y avisa a la UI (reactivo). */
+  private reportSyncError(e: unknown) {
+    this.lastSyncError = e instanceof Error ? e.message : "Error de sincronización";
+    this.listeners.forEach((fn) => fn());
+  }
+
   syncFullState() {
     if (!this.syncSink) return;
     const diff = diffStates(emptyState(), this.state);
     if (isEmptyDiff(diff)) return;
     Promise.resolve()
       .then(() => this.syncSink!(diff))
-      .catch((e) => {
-        this.lastSyncError = e instanceof Error ? e.message : "Error de sincronización";
-      });
+      .catch((e) => this.reportSyncError(e));
   }
 
   /** Conecta (o desconecta con null) el empuje a Supabase. */
@@ -126,9 +130,7 @@ export class PartyStore {
     if (this.syncSink && !isEmptyDiff(diff)) {
       Promise.resolve()
         .then(() => this.syncSink!(diff))
-        .catch((e) => {
-          this.lastSyncError = e instanceof Error ? e.message : "Error de sincronización";
-        });
+        .catch((e) => this.reportSyncError(e));
     }
   }
 

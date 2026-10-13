@@ -19,6 +19,7 @@ interface GameCtx {
   session: Session;
   connected: boolean;
   liveError: string | null;
+  syncError: string | null;
   reducedMotion: boolean;
   muted: boolean;
   setMuted: (v: boolean) => void;
@@ -127,6 +128,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       session,
       connected,
       liveError,
+      syncError: partyStore.lastSyncError,
       reducedMotion,
       muted,
       setMuted: (v) => {
