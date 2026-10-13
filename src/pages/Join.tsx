@@ -25,19 +25,16 @@ export function JoinPage() {
   );
   const teams = state.teams.filter((t) => t.tournamentId === tournament?.id);
 
-  // Modo "live": si el código no está en el estado local, lo buscamos en la nube.
-  // Así un dispositivo ajeno puede unirse al torneo creado en otro (el estado vive
-  // en localStorage, que NO se comparte entre dispositivos). Con debounce para no
-  // disparar una petición por cada tecla; `state.tournaments` entra en las deps
-  // para re-evaluar tras hidratar y evitar un bucle.
+  // Modo "live": descubrimos/actualizamos el torneo por su código en la nube. Así un
+  // dispositivo ajeno puede unirse al torneo creado en otro (el estado vive en
+  // localStorage, que NO se comparte entre dispositivos). Importante: NO guardamos por
+  // "ya está en local" — el status puede cambiar en la nube (p. ej. el director abre
+  // inscripciones) y el móvil debe re-consultarlo. Con debounce para no disparar una
+  // petición por cada tecla; `state.tournaments` NO está en deps para no buclear con hydrate.
   useEffect(() => {
     if (mode !== "live" || !supabaseConfigured()) return;
     const c = code.trim().toUpperCase();
     if (c.length < 6) {
-      setLookup("idle");
-      return;
-    }
-    if (state.tournaments.some((t) => t.accessCode === c)) {
       setLookup("idle");
       return;
     }
@@ -62,11 +59,18 @@ export function JoinPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [code, mode, state.tournaments]);
+  }, [code, mode]);
 
-  const submit = () => {
+  const submit = async () => {
     try {
       setError("");
+      // Re-validamos el estado del torneo contra la nube justo antes de confirmar: el
+      // status (p. ej. "inscripciones abiertas") puede haber cambiado desde la última
+      // hidratación y el localStorage local quedaría obsoleto. En live, la nube manda.
+      if (mode === "live" && supabaseConfigured()) {
+        const fresh = await fetchJoinBundle(getSupabase(), code.toUpperCase());
+        if (fresh) partyStore.hydrate(fresh);
+      }
       const player = partyStore.join({
         code: code.toUpperCase(),
         userId: session.userId,
