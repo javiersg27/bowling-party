@@ -85,15 +85,28 @@ export function CreateTournamentPage() {
           },
         },
       });
-      // Empuje EXPLÍCITO y esperado del torneo recién creado. El push incremental
-      // del sink es "fire-and-forget": si la nube lo rechazaba (RLS, sesión aún no
-      // alineada…) el torneo se quedaba solo en local y el móvil no lo encontraba,
-      // sin que el usuario viera ningún error. Aquí subimos a propósito y, si la
-      // nube responde con error, lo mostramos en pantalla en lugar de tragarlo.
+      // Empuje EXPLÍCITO y esperado del torneo y su estructura recién creados.
+      // El push incremental del sink es "fire-and-forget": si la nube lo rechazaba
+      // (RLS, sesión aún no alineada…) el torneo se quedaba solo en local y el
+      // móvil no lo encontraba. Aquí subimos a propósito y en orden correcto:
+      //   1) torneo (INSERT; la política exige created_by = auth.uid()),
+      //   2) membership admin (bootstrapping de RLS para el resto),
+      //   3) equipos, pistas y rondas (las políticas de escritura exigen ser admin).
+      // Sin los equipos en la nube, el lookup del móvil devolvía teams: [] y no
+      // podía elegir equipo. Si algo falla, lo mostramos en pantalla.
       if (mode === "live" && supabaseConfigured()) {
         const sync = new LiveSync(getSupabase(), () => {});
         await sync.pushTournament(t);
         await sync.ensureMembership(t.id, creatorId, "admin");
+        for (const team of partyStore.state.teams.filter((x) => x.tournamentId === t.id)) {
+          await sync.pushTeam(team);
+        }
+        for (const lane of partyStore.state.lanes.filter((x) => x.tournamentId === t.id)) {
+          await sync.pushLane(lane);
+        }
+        for (const round of partyStore.state.rounds.filter((x) => x.tournamentId === t.id)) {
+          await sync.pushRound(round);
+        }
       }
       nav(`/admin/t/${t.id}`);
     } catch (e) {
