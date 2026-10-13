@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { partyStore } from "../data/store";
+import { ensureAnonymousSession, supabaseConfigured } from "../data/supabase";
 import { useGame } from "../game/GameContext";
 import { MODIFIER_CATALOG } from "../domain/modifiers";
 import { describeAssignment } from "../domain/assignment";
@@ -34,7 +35,7 @@ export function AdminHome() {
 }
 
 export function CreateTournamentPage() {
-  const { session, becomeAdmin } = useGame();
+  const { session, becomeAdmin, mode } = useGame();
   const nav = useNavigate();
   const [name, setName] = useState("Gran Prix de la Bolera");
   const [description, setDescription] = useState("");
@@ -46,14 +47,26 @@ export function CreateTournamentPage() {
   const [countWarmup, setCountWarmup] = useState(true);
   const [error, setError] = useState("");
 
-  const submit = () => {
+  const submit = async () => {
     try {
+      setError("");
       becomeAdmin();
+      // En modo vivo el creador debe ser el auth.uid() REAL de Supabase: la
+      // política RLS `tournaments_insert_creator` exige created_by = auth.uid().
+      // La identidad local se alinea de forma asíncrona al entrar en "vivo" y
+      // puede no estar lista todavía, lo que dejaba el torneo con un creador
+      // "huérfano" que RLS rechazaba en silencio (nunca llegaba a la nube y el
+      // móvil no lo encontraba por código). Lo resolvemos aquí de forma segura.
+      let creatorId = session.userId;
+      if (mode === "live" && supabaseConfigured()) {
+        const authSession = await ensureAnonymousSession();
+        creatorId = authSession?.user?.id ?? session.userId;
+      }
       const t = partyStore.createTournament({
         name,
         description,
         date,
-        createdBy: session.userId,
+        createdBy: creatorId,
         settings: {
           laneCount,
           teamCount,
