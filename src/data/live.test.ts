@@ -97,24 +97,33 @@ describe("mapeo motor (camelCase) ↔ Supabase (snake_case)", () => {
     expect(roundFromRow(row)).toEqual(round);
   });
 
-  it("game renombra current_frame y score_status", () => {
+  it("game renombra current_frame, score_status y las FKs a *_id", () => {
     const row = gameToRow(game);
     expect(row.current_frame).toBe(2);
     expect(row.score_status).toBe("confirmed");
+    expect(row.round_id).toBe(game.roundId);
+    expect(row.player_id).toBe(game.playerId);
+    expect(row.lane_id).toBe(game.laneId);
     expect(gameFromRow(row)).toEqual(game);
   });
 
-  it("assignment renombra order → sort_order", () => {
+  it("assignment renombra order → sort_order y las FKs a *_id", () => {
     const row = assignmentToRow(assignment);
     expect(row.sort_order).toBe(2);
+    expect(row.round_id).toBe(assignment.roundId);
+    expect(row.lane_id).toBe(assignment.laneId);
+    expect(row.player_id).toBe(assignment.playerId);
     expect(row.order).toBeUndefined();
     expect(assignmentFromRow(row)).toEqual(assignment);
   });
 
-  it("inventory renombra granted_frame y choice_ids", () => {
+  it("inventory renombra granted_frame y las FKs a *_id", () => {
     const row = inventoryToRow(inventory);
     expect(row.granted_frame).toBe(4);
     expect(row.granted_at).toBe(inventory.grantedAt);
+    expect(row.player_id).toBe(inventory.playerId);
+    expect(row.round_id).toBe(inventory.roundId);
+    expect(row.modifier_id).toBe(inventory.modifierId);
     expect(inventoryFromRow(row)).toEqual(inventory);
   });
 

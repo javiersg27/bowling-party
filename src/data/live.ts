@@ -58,19 +58,30 @@ const TOURNAMENT_MAP: Record<string, string> = {
   createdAt: "created_at",
   updatedAt: "updated_at",
 };
-const TEAM_MAP: Record<string, string> = { sortOrder: "sort_order" };
-const LANE_MAP: Record<string, string> = { marshalId: "marshal_id" };
+const TEAM_MAP: Record<string, string> = { tournamentId: "tournament_id", sortOrder: "sort_order" };
+const LANE_MAP: Record<string, string> = { tournamentId: "tournament_id", marshalId: "marshal_id" };
 const ROUND_MAP: Record<string, string> = {
+  tournamentId: "tournament_id",
   modifiersFrozen: "modifiers_frozen",
   startedAt: "started_at",
   completedAt: "completed_at",
 };
-const ASSIGNMENT_MAP: Record<string, string> = { order: "sort_order" };
+const ASSIGNMENT_MAP: Record<string, string> = {
+  roundId: "round_id",
+  laneId: "lane_id",
+  playerId: "player_id",
+  order: "sort_order",
+};
 const GAME_MAP: Record<string, string> = {
+  playerId: "player_id",
+  roundId: "round_id",
+  laneId: "lane_id",
   currentFrame: "current_frame",
   scoreStatus: "score_status",
 };
 const INVENTORY_MAP: Record<string, string> = {
+  playerId: "player_id",
+  roundId: "round_id",
   modifierId: "modifier_id",
   grantedAt: "granted_at",
   grantedFrame: "granted_frame",
