@@ -97,7 +97,11 @@ export function CreateTournamentPage() {
       }
       nav(`/admin/t/${t.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      // Supabase lanza objetos PostgrestError (no instanceof Error): extraemos su
+      // message/code para no mostrar un "Error" genérico sin información.
+      const err = e as { message?: string; code?: string; error_description?: string } | null;
+      const detail = err?.message || err?.error_description || (e instanceof Error ? e.message : null);
+      setError(detail ? `No se pudo crear el torneo: ${detail}${err?.code ? ` (${err.code})` : ""}` : "Error inesperado al crear el torneo.");
     }
   };
 

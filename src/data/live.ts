@@ -183,7 +183,22 @@ export class LiveSync {
   }
 
   async pushTournament(t: Tournament) {
-    await this.upsert("tournaments", tournamentToRow(t), "id");
+    const row = tournamentToRow(t);
+    // INSERT puro, NO upsert. Un upsert obliga a PostgREST a evaluar también la
+    // política UPDATE (is_tournament_admin), y al crear un torneo nuevo todavía
+    // NO eres miembro → RLS lo rechaza con 42501. El INSERT solo evalúa la
+    // política INSERT (created_by = auth.uid()), que sí aplica al creador.
+    const inserted = await this.sb.from("tournaments").insert(row);
+    if (!inserted.error) return;
+    // 23505 = unique_violation: la fila ya existe (reenvío del sink o push
+    // duplicado). Best-effort update: si además falla por RLS (aún no admin en
+    // ese instante) lo ignoramos, porque el torneo YA quedó en la nube.
+    if (inserted.error.code === "23505") {
+      const { error } = await this.sb.from("tournaments").update(row).eq("id", t.id);
+      if (error && error.code !== "42501") throw error;
+      return;
+    }
+    throw inserted.error;
   }
 
   async pushTeam(team: Team) {

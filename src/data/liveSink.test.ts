@@ -68,7 +68,14 @@ describe("makeLiveSink tolerante a fallos parciales", () => {
             }
             return { error: null };
           },
-          insert: async () => ({ error: null }),
+          insert: async (row: Record<string, unknown>) => {
+            // pushTournament ahora hace INSERT puro (no upsert): simulamos aquí el
+            // mismo rechazo RLS para un torneo con created_by inválido.
+            if (table === "tournaments" && row.created_by === "demo-admin") {
+              return { error: { message: "violates row-level security" } };
+            }
+            return { error: null };
+          },
           delete: () => ({ eq: async () => ({ error: null }) }),
         };
       },
