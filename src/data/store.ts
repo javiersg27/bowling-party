@@ -1,5 +1,5 @@
 import { buildDemoState } from "./demoSeed";
-import { mergeBundle, type JoinBundle } from "./hydrate";
+import { mergeBundle, mergeRemoteState, type JoinBundle, type RemoteState } from "./hydrate";
 import { cloneState, diffStates, isEmptyDiff, type StateDiff } from "./sync";
 import {
   activateModifier,
@@ -147,6 +147,20 @@ export class PartyStore {
    */
   hydrate(bundle: JoinBundle) {
     this.state = mergeBundle(this.state, bundle);
+    this.lastCommitted = cloneState(this.state);
+    save(this.state);
+    this.listeners.forEach((fn) => fn());
+  }
+
+  /**
+   Fusiona una instantánea remota COMPLETA de un torneo (p. ej. tras un cambio
+   Realtime en el host). Igual que `hydrate`, NO dispara empuje: lo recién
+   bajado se marca como ya sincronizado para que el próximo commit solo suba
+   cambios locales futuros. Refleja así jugadores/equipos creados en otros
+   dispositivos (el móvil se inscribe → aparece en el PC sin recargar).
+   */
+  hydrateRemote(remote: RemoteState) {
+    this.state = mergeRemoteState(this.state, remote);
     this.lastCommitted = cloneState(this.state);
     save(this.state);
     this.listeners.forEach((fn) => fn());

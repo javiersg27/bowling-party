@@ -159,10 +159,25 @@ Además de arreglar el build, esta fase implementó lo pendiente de mayor priori
   añadir las tablas a `supabase_realtime`). Luego, crear un torneo en modo vivo y comprobar
   que aparece en la tabla `tournaments` y que el creador queda en `tournament_members`.
 
-### B. Carga inicial / hidratación desde Supabase (ALTA)
-- Al entrar en modo "live" y suscribirse a Realtime, los `onChange` hoy solo hacen `refresh`
-  (re-render con el estado local). Falta **tirar** de las tablas (`*FromRow`) y fusionar en
-  `EngineState` para reflejar datos de otros dispositivos. Requiere un merge por `version`.
+### B. Carga inicial / hidratación desde Supabase — ✅ IMPLEMENTADO (pull del host)
+- **Problema que resuelve:** el móvil SÍ subía al jugador a la nube (push), pero el PC/host
+  ante un cambio Realtime solo hacía `refresh` (re-render con su `localStorage`), que nunca
+  contenía a los jugadores creados en otros dispositivos → "no hay jugadores" al iniciar.
+- `src/data/hydrate.ts`: **`pullTournament(sb, id)`** descarga el torneo completo (equipos,
+  pistas, jugadores, rondas, asignaciones, juegos, inventario, activaciones, efectos y
+  eventos). Las tablas que cuelgan de `round_id` se acotan por las rondas del torneo.
+- **`mergeRemoteState(state, remote)`** (pura, testeable) fusiona sin destruir lo local:
+  torneo por `updatedAt` más reciente; el resto por `id` (`games` por `playerId|roundId`).
+- `PartyStore.hydrateRemote(remote)`: fusiona y marca como ya sincronizado (NO re-envía a la
+  nube, igual que `hydrate`).
+- `useLiveSync`: en cada cambio Realtime —y uno inicial— hace **pull + merge** (con debounce y
+  control de concurrencia), en lugar de solo re-renderizar.
+- `GameContext`: el torneo seguido por el pull se toma de la **ruta actual** (`/admin/t/:id` o
+  `/t/:code`) con fallback al torneo activo propio, para no seguir por error al demo local.
+- `live.ts`: añadidos `effectToRow`/`effectFromRow` (y `EFFECT_MAP`) para poder bajar efectos.
+- Tests: `hydrate.test.ts` (+5 de `mergeRemoteState`) y `live.test.ts` (+1 de mapeo efecto).
+- ⚠️ **Pendiente verificar E2E** con Realtime + `supabase_realtime`: crear torneo en el PC,
+  inscribirse desde el móvil y confirmar que aparece en el panel sin recargar.
 
 ### C. Rondas en la UI de Admin (MEDIA)
 - El motor tiene `startRound`/`completeRound`; falta el asistente de 3 rondas en la UI y el

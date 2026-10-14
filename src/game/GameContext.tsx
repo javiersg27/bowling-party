@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { getMode, partyStore, setMode, type AppMode } from "../data/store";
 import { ensureAnonymousSession, getSupabase, supabaseConfigured } from "../data/supabase";
 import { useLiveSync } from "../data/useLiveSync";
@@ -74,13 +75,35 @@ export function GameProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(s));
   };
 
-  // Tiempo real: en modo "live" seguimos el torneo activo (o el primero).
+  // Tiempo real: en modo "live" seguimos el torneo correspondiente.
+  // Prioridad: 1) el torneo explícito de la ruta actual (/admin/t/:id o
+  // /t/:code), porque es justo el que el usuario está mirando; 2) si no hay
+  // ruta de torneo, el torneo activo más relevante (el creado por este usuario,
+  // o el más reciente). Así el pull de Realtime trae al panel de dirección los
+  // jugadores del torneo correcto aunque haya varios (p. ej. el demo local).
   // Defensivo: si Supabase falla, la app continúa en el estado actual.
+  const location = useLocation();
   const activeTournamentId = useMemo(() => {
     const list = partyStore.state.tournaments;
-    const live = list.find((t) => t.status !== "finished" && t.status !== "archived");
-    return (live ?? list[0])?.id ?? null;
-  }, [tick]);
+    // 1) Ruta /admin/t/:id → ese torneo por id exacto.
+    const adminMatch = location.pathname.match(/^\/admin\/t\/(.+)$/);
+    if (adminMatch) {
+      const id = decodeURIComponent(adminMatch[1]);
+      if (list.some((t) => t.id === id)) return id;
+    }
+    // 2) Ruta /t/:code/... → el torneo con ese código de acceso.
+    const codeMatch = location.pathname.match(/^\/t\/([^/]+)/);
+    if (codeMatch) {
+      const code = decodeURIComponent(codeMatch[1]).toUpperCase();
+      const byCode = list.find((t) => t.accessCode === code);
+      if (byCode) return byCode.id;
+    }
+    // 3) Fallback: torneo activo más relevante (mío más reciente, o el global).
+    const active = list.filter((t) => t.status !== "finished" && t.status !== "archived");
+    const byRecency = [...active].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    const mine = byRecency.find((t) => t.createdBy === session.userId);
+    return (mine ?? byRecency[0] ?? list[0])?.id ?? null;
+  }, [tick, session.userId, location.pathname]);
 
   const { error: liveError } = useLiveSync(mode, activeTournamentId, () => setTick((n) => n + 1));
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   assignmentFromRow,
   assignmentToRow,
+  effectFromRow,
+  effectToRow,
   gameFromRow,
   gameToRow,
   inventoryFromRow,
@@ -13,7 +15,7 @@ import {
   tournamentFromRow,
   tournamentToRow,
 } from "./live";
-import type { InventoryItem, LaneAssignment, Player, PlayerGame, Round, Tournament } from "../domain/types";
+import type { ActiveEffect, InventoryItem, LaneAssignment, Player, PlayerGame, Round, Tournament } from "../domain/types";
 
 const tournament: Tournament = {
   id: "t1",
@@ -80,6 +82,15 @@ const player: Player = {
   banned: false,
 };
 
+const effect: ActiveEffect = {
+  id: "e1",
+  playerId: "p1",
+  roundId: "r1",
+  kind: "shield",
+  remainingFrames: 3,
+  data: { source: "seed" },
+};
+
 describe("mapeo motor (camelCase) ↔ Supabase (snake_case)", () => {
   it("tournament renombra access_code / created_by / timestamps", () => {
     const row = tournamentToRow(tournament);
@@ -134,5 +145,13 @@ describe("mapeo motor (camelCase) ↔ Supabase (snake_case)", () => {
     const back = playerFromRow(row);
     expect(back.userId).toBe("u1");
     expect(back.uniqueKey).toBe("u1");
+  });
+
+  it("effect renombra remaining_frames y las FKs a *_id", () => {
+    const row = effectToRow(effect);
+    expect(row.remaining_frames).toBe(3);
+    expect(row.player_id).toBe(effect.playerId);
+    expect(row.round_id).toBe(effect.roundId);
+    expect(effectFromRow(row)).toEqual(effect);
   });
 });

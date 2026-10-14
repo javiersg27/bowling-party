@@ -1,4 +1,5 @@
 import type {
+  ActiveEffect,
   GameEvent,
   InventoryItem,
   Lane,
@@ -100,6 +101,11 @@ const EVENT_MAP: Record<string, string> = {
   tournamentId: "tournament_id",
   createdAt: "created_at",
 };
+const EFFECT_MAP: Record<string, string> = {
+  playerId: "player_id",
+  roundId: "round_id",
+  remainingFrames: "remaining_frames",
+};
 
 // ---------------------------------------------------------------------------
 // Mapeo por entidad
@@ -163,6 +169,13 @@ export function activationFromRow(row: Row): ModifierActivation {
 
 export function eventToRow(e: GameEvent): Row {
   return toRow(e as unknown as Row, EVENT_MAP);
+}
+
+export function effectToRow(e: ActiveEffect): Row {
+  return toRow(e as unknown as Row, EFFECT_MAP);
+}
+export function effectFromRow(row: Row): ActiveEffect {
+  return fromRow<ActiveEffect>(row, EFFECT_MAP);
 }
 
 // ---------------------------------------------------------------------------
