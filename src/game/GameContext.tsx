@@ -28,6 +28,14 @@ interface GameCtx {
   refresh: () => void;
   becomeAdmin: () => void;
   becomeGuest: (name?: string) => void;
+  /**
+   * Garantiza una sesión anónima real de Supabase y alinea `session.userId` a su
+   * `auth.uid()`. Devuelve el id REAL a usar como identidad. Imprescindible
+   * antes de acciones que RLS valida por `auth.uid()` (inscribirse, crear
+   * torneo): evita subir datos con un `user_id` local obsoleto que RLS rechaza.
+   * En modo demo (o sin Supabase) devuelve el userId de la sesión local.
+   */
+  ensureIdentity: () => Promise<string>;
   switchMode: (m: AppMode) => void;
 }
 
@@ -75,6 +83,35 @@ export function GameProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(s));
   };
 
+  // Ref con la sesión vigente para que ensureIdentity no capture un closure obsoleto.
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+
+  // Identidad real (auth.uid) en modo vivo; la comparten ensureIdentity y el sink.
+  const liveUserIdRef = useRef<string | null>(null);
+
+  /**
+   * Garantiza la identidad real (auth.uid) y la alinea a la sesión local antes de
+   * una acción que RLS valida por auth.uid(). Idempotente y segura en demo.
+   */
+  const ensureIdentity = async (): Promise<string> => {
+    if (mode !== "live" || !supabaseConfigured()) return sessionRef.current.userId;
+    try {
+      const authSession = await ensureAnonymousSession();
+      const authUserId = authSession?.user?.id;
+      if (authUserId) {
+        liveUserIdRef.current = authUserId;
+        if (sessionRef.current.userId !== authUserId) {
+          persistSession({ ...sessionRef.current, userId: authUserId });
+        }
+        return authUserId;
+      }
+    } catch {
+      // Si falla, seguimos con la identidad local (modo degradado).
+    }
+    return sessionRef.current.userId;
+  };
+
   // Tiempo real: en modo "live" seguimos el torneo correspondiente.
   // Prioridad: 1) el torneo explícito de la ruta actual (/admin/t/:id o
   // /t/:code), porque es justo el que el usuario está mirando; 2) si no hay
@@ -111,7 +148,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Al entrar en "live" aseguramos una sesión anónima de Supabase y usamos su
   // user.id como identidad (las políticas RLS se basan en auth.uid()). Luego
   // conectamos el sink que traduce cada mutación local a upserts remotos.
-  const liveUserIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (mode !== "live" || !supabaseConfigured()) {
       partyStore.setSyncSink(null);
@@ -162,6 +198,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       refresh: () => setTick((n) => n + 1),
       becomeAdmin: () => persistSession({ ...session, isAdmin: true, displayName: "Director" }),
       becomeGuest: (name) => persistSession({ ...session, isAdmin: false, displayName: name ?? session.displayName }),
+      ensureIdentity,
       switchMode: (m) => {
         setMode(m);
         setModeState(m);

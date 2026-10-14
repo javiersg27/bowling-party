@@ -11,7 +11,7 @@ import { beep } from "../ui/audio";
 
 export function JoinPage() {
   const { code: codeParam } = useParams();
-  const { state, session, muted, mode } = useGame();
+  const { state, session, muted, mode, ensureIdentity } = useGame();
   const nav = useNavigate();
   const [code, setCode] = useState(codeParam?.toUpperCase() ?? "");
   const [name, setName] = useState(session.displayName === "Invitado" ? "" : session.displayName);
@@ -64,16 +64,22 @@ export function JoinPage() {
   const submit = async () => {
     try {
       setError("");
-      // Re-validamos el estado del torneo contra la nube justo antes de confirmar: el
-      // status (p. ej. "inscripciones abiertas") puede haber cambiado desde la última
-      // hidratación y el localStorage local quedaría obsoleto. En live, la nube manda.
+      // Identidad REAL primero: en modo vivo aseguramos la sesión anónima de
+      // Supabase y alineamos session.userId a su auth.uid(). Si inscribiéramos con
+      // un user_id local obsoleto, RLS (players_insert_self exige
+      // user_id = auth.uid()) rechazaría el INSERT en silencio y el jugador nunca
+      // llegaría a la nube → el host no lo vería.
+      const userId = await ensureIdentity();
+      // Re-validamos el estado del torneo contra la nube justo antes de confirmar:
+      // el status (p. ej. "inscripciones abiertas") puede haber cambiado desde la
+      // última hidratación y el localStorage local quedaría obsoleto.
       if (mode === "live" && supabaseConfigured()) {
         const fresh = await fetchJoinBundle(getSupabase(), code.toUpperCase());
         if (fresh) partyStore.hydrate(fresh);
       }
       const player = partyStore.join({
         code: code.toUpperCase(),
-        userId: session.userId,
+        userId,
         displayName: name,
         avatar,
         teamId: teamId || undefined,
