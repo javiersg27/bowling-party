@@ -5,6 +5,7 @@ import { partyStore } from "../data/store";
 import { getSupabase, ensureAnonymousSession, supabaseConfigured } from "../data/supabase";
 import { LiveSync } from "../data/live";
 import { useGame } from "../game/GameContext";
+import { type SyncStatus } from "../data/useLiveSync";
 import { MODIFIER_CATALOG } from "../domain/modifiers";
 import { describeAssignment } from "../domain/assignment";
 import { BigButton, Title } from "../ui/Shell";
@@ -145,7 +146,7 @@ export function CreateTournamentPage() {
 
 export function AdminTournamentPage() {
   const { id } = useParams();
-  const { state, session } = useGame();
+  const { state, session, syncStatus, syncError, forceSync, mode } = useGame();
   const t = state.tournaments.find((x) => x.id === id);
   const [tab, setTab] = useState<"control" | "mods" | "lanes" | "players">("control");
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -160,6 +161,18 @@ export function AdminTournamentPage() {
       </div>
     );
   }
+  const syncLabel = (s: SyncStatus | undefined) => {
+    switch (s) {
+      case "pulling":
+        return "Sincronizando con la nube…";
+      case "error":
+        return "Error de sincronización";
+      case "ok":
+        return "Sincronizado con la nube";
+      default:
+        return mode === "live" ? "En vivo" : "Demo (sin nube)";
+    }
+  };
   const players = state.players.filter((p) => p.tournamentId === t.id && !p.banned);
   const teams = state.teams.filter((x) => x.tournamentId === t.id);
   const lanes = state.lanes.filter((x) => x.tournamentId === t.id);
@@ -175,7 +188,10 @@ export function AdminTournamentPage() {
 
   return (
     <div className="space-y-4 pb-16">
-      <Title text={t.name} sub={`${STATUS_LABEL[t.status]} · código ${t.accessCode}`} />
+      <Title
+        text={t.name}
+        sub={`${STATUS_LABEL[t.status]} · código ${t.accessCode} · ${syncLabel(syncStatus)}${syncError ? ` (${syncError})` : ""}`}
+      />
       <div className="flex flex-wrap gap-2">
         {(["control", "mods", "lanes", "players"] as const).map((k) => (
           <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-2 font-black ${tab === k ? "bg-neon-pink" : "bg-white/10"}`}>
@@ -195,6 +211,17 @@ export function AdminTournamentPage() {
               <BigButton className="w-full" onClick={() => act(() => partyStore.setStatus(t.id, "registration", session.userId))}>
                 Abrir inscripciones
               </BigButton>
+              {mode === "live" && (
+                <BigButton
+                  className="w-full"
+                  color="bg-neon-cyan"
+                  onClick={() => {
+                    act(() => void forceSync());
+                  }}
+                >
+                  Sincronizar jugadores ahora
+                </BigButton>
+              )}
               <BigButton className="w-full" color="bg-white" onClick={() => act(() => partyStore.setStatus(t.id, "ready", session.userId))}>
                 Cerrar inscripciones / Preparado
               </BigButton>

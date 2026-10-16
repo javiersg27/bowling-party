@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { useLocation } from "react-router-dom";
 import { getMode, partyStore, setMode, type AppMode } from "../data/store";
 import { ensureAnonymousSession, getSupabase, supabaseConfigured } from "../data/supabase";
-import { useLiveSync } from "../data/useLiveSync";
+import { useLiveSync, type SyncStatus } from "../data/useLiveSync";
 import { makeLiveSink } from "../data/liveSink";
 import type { EngineState } from "../data/engine";
 import { uid } from "../domain/ids";
@@ -20,6 +20,7 @@ interface GameCtx {
   session: Session;
   connected: boolean;
   liveError: string | null;
+  syncStatus: SyncStatus;
   syncError: string | null;
   reducedMotion: boolean;
   muted: boolean;
@@ -28,6 +29,11 @@ interface GameCtx {
   refresh: () => void;
   becomeAdmin: () => void;
   becomeGuest: (name?: string) => void;
+  /**
+   * Fuerza una sincronización manual del torneo seguido (pull desde Supabase).
+   * Útil si Realtime no entrega un evento y quieres ver los jugadores nuevos sin esperar.
+   */
+  forceSync: () => Promise<void>;
   /**
    * Garantiza una sesión anónima real de Supabase y alinea `session.userId` a su
    * `auth.uid()`. Devuelve el id REAL a usar como identidad. Imprescindible
@@ -142,7 +148,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return (mine ?? byRecency[0] ?? list[0])?.id ?? null;
   }, [tick, session.userId, location.pathname]);
 
-  const { error: liveError } = useLiveSync(mode, activeTournamentId, () => setTick((n) => n + 1));
+  const { error: liveError, status: liveSyncStatus, forcePull: liveForcePull } = useLiveSync(
+    mode,
+    activeTournamentId,
+    () => setTick((n) => n + 1),
+  );
 
   // Identidad real + empuje (push) en modo vivo.
   // Al entrar en "live" aseguramos una sesión anónima de Supabase y usamos su
@@ -187,7 +197,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       session,
       connected,
       liveError,
-      syncError: partyStore.lastSyncError,
+      syncStatus: liveSyncStatus,
+      syncError: partyStore.lastSyncError ?? liveError,
       reducedMotion,
       muted,
       setMuted: (v) => {
@@ -198,13 +209,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       refresh: () => setTick((n) => n + 1),
       becomeAdmin: () => persistSession({ ...session, isAdmin: true, displayName: "Director" }),
       becomeGuest: (name) => persistSession({ ...session, isAdmin: false, displayName: name ?? session.displayName }),
+      forceSync: liveForcePull,
       ensureIdentity,
       switchMode: (m) => {
         setMode(m);
         setModeState(m);
       },
     }),
-    [mode, session, connected, reducedMotion, muted, tick, liveError],
+    [mode, session, connected, reducedMotion, muted, tick, liveError, liveSyncStatus, liveForcePull],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -29,17 +29,28 @@ const POLL_MS = 5000;
  * @param tournamentId torneo a seguir (si aplica)
  * @param onChange  callback extra para refrescar la UI (p. ej. forzar re-render)
  */
+export type SyncStatus = "idle" | "pulling" | "ok" | "error";
+
 export function useLiveSync(
   mode: AppMode,
   tournamentId: string | null,
   onChange: () => void,
-): { error: string | null } {
+): {
+  error: string | null;
+  status: SyncStatus;
+  forcePull: () => Promise<void>;
+} {
   const errRef = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const statusRef = useRef<SyncStatus>("idle");
+  const lastErrorRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (mode !== "live" || !tournamentId || !supabaseConfigured()) return;
+    if (mode !== "live" || !tournamentId || !supabaseConfigured()) {
+      statusRef.current = "idle";
+      return;
+    }
     let cancelled = false;
     let unsub: (() => void) | null = null;
     let poll: number | undefined;
@@ -50,24 +61,34 @@ export function useLiveSync(
     let pendingPull = false;
     let debounce: number | undefined;
 
+    const setStatus = (s: SyncStatus) => {
+      if (!cancelled) statusRef.current = s;
+    };
+
     const doPull = async () => {
       if (pulling) {
         pendingPull = true;
         return;
       }
       pulling = true;
+      setStatus("pulling");
       try {
         const remote = await pullTournament(getSupabase(), tournamentId);
         if (cancelled) return;
         partyStore.hydrateRemote(remote);
         errRef.current = null;
+        lastErrorRef.current = null;
+        setStatus("ok");
         // hydrateRemote ya notifica a los listeners; reforzamos por si el
         // listener externo hace algo más que re-renderizar.
         onChangeRef.current();
       } catch (e) {
         // No fatal: seguimos con el estado local. Se expone para la UI.
+        const msg = e instanceof Error ? e.message : "No se pudo sincronizar en vivo.";
         if (!cancelled) {
-          errRef.current = e instanceof Error ? e.message : "No se pudo sincronizar en vivo.";
+          errRef.current = msg;
+          lastErrorRef.current = msg;
+          setStatus("error");
         }
       } finally {
         pulling = false;
@@ -75,6 +96,26 @@ export function useLiveSync(
         if (pendingPull && !cancelled) {
           pendingPull = false;
           void doPull();
+        } else if (!pendingPull) {
+          setStatus("ok");
+        }
+      }
+    };
+
+    /** Sincronización manual bajo demanda (p. ej. botón de refresco en el admin). */
+    const forcePull = async () => {
+      if (mode !== "live" || !tournamentId || !supabaseConfigured()) return;
+      // Garantizar JWT antes de tirar del torneo (RLS por membresía).
+      try {
+        await ensureAnonymousSession();
+        if (cancelled) return;
+        await doPull();
+      } catch (e) {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : "No se pudo sincronizar.";
+          errRef.current = msg;
+          lastErrorRef.current = msg;
+          setStatus("error");
         }
       }
     };
@@ -97,6 +138,8 @@ export function useLiveSync(
         const sync = new LiveSync(sb, schedulePull);
         unsub = sync.subscribeTournament(tournamentId);
         errRef.current = null;
+        lastErrorRef.current = null;
+        setStatus("idle");
         // Pull inicial: refleja de inmediato lo que ya haya en la nube.
         void doPull();
         // Respaldo por polling (pausado si la pestaña está oculta).
@@ -106,7 +149,10 @@ export function useLiveSync(
         }, POLL_MS);
       } catch (e) {
         if (!cancelled) {
-          errRef.current = e instanceof Error ? e.message : "No se pudo conectar en vivo.";
+          const msg = e instanceof Error ? e.message : "No se pudo conectar en vivo.";
+          errRef.current = msg;
+          lastErrorRef.current = msg;
+          setStatus("error");
         }
       }
     };
@@ -127,6 +173,10 @@ export function useLiveSync(
     };
   }, [mode, tournamentId]);
 
-  return { error: errRef.current };
+  return {
+    error: errRef.current,
+    status: statusRef.current,
+    forcePull,
+  };
 }
 
