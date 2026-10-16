@@ -37,7 +37,7 @@ export function AdminHome() {
 }
 
 export function CreateTournamentPage() {
-  const { session, becomeAdmin, mode } = useGame();
+  const { session, becomeAdmin, mode, ensureIdentity } = useGame();
   const nav = useNavigate();
   const [name, setName] = useState("Gran Prix de la Bolera");
   const [description, setDescription] = useState("");
@@ -113,8 +113,8 @@ export function CreateTournamentPage() {
       // Alinear la identidad local con el auth.uid() real de Supabase para que
       // activeTournamentId encuentre el torneo por createdBy === session.userId
       // y no tenga que depender del fallback por recencia.
-      if (mode === "live" && supabaseConfigured() && session.userId !== creatorId) {
-        persistSession({ ...session, userId: creatorId });
+      if (mode === "live" && supabaseConfigured()) {
+        await ensureIdentity();
       }
     } catch (e) {
       // Supabase lanza objetos PostgrestError (no instanceof Error): extraemos su
