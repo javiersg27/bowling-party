@@ -181,10 +181,27 @@ export function useLiveSync(
         // Asegurar membresía antes del pull inicial: con RLS, si no somos
         // miembro, SELECT sobre players devuelve [] sin lanzar error y el pull
         // parecería "ok" pero sin jugadores.
+        // NUNCA degradamos: si ya somos admin, ensure_my_membership conserva
+        // el rol (la RPC ignora el "player" pedido). Pedimos "player" porque en
+        // este hook no sabemos si somos director o invitado.
         try {
           const session = await ensureAnonymousSession();
           if (!session?.user) throw new Error("No se pudo obtener la sesión de Supabase");
           await sync.ensureMembership(tournamentId, session.user.id, "player");
+          // Refrescamos el sink con el rol REAL (la RPC devuelve la fila):
+          // si el PC era admin, el sink debe seguir usando rol admin para que
+          // sus escrituras (cerrar inscripciones, iniciar ronda…) pasen RLS.
+          const sb2 = getSupabase();
+          const { data: membership } = await sb2
+            .from("tournament_members")
+            .select("role")
+            .eq("tournament_id", tournamentId)
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+          const realRole = (membership as { role?: string } | null)?.role;
+          const { partyStore: ps } = await import("./store");
+          const { makeLiveSink: makeSink } = await import("./liveSink");
+          ps.setSyncSink(makeSink(sb2, session.user.id, realRole === "admin" || realRole === "lane_marshal" ? "admin" : "player"));
         } catch (membershipErr) {
           // No bloqueamos el inicio por esto; el pull fallaría con RLS y se
           // manejaría en forcePull.

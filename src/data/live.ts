@@ -234,7 +234,22 @@ export class LiveSync {
   }
 
   async pushPlayer(player: Player) {
-    await this.upsert("players", playerToRow(player), "id");
+    // INSERT puro + fallback UPDATE (igual que pushTournament). Un upsert obliga
+    // a PostgREST a evaluar también la política UPDATE (UPDATE no tiene política
+    // para jugadores propios, solo para admin → 403 aunque el INSERT pasaría).
+    const { error } = await this.sb.from("players").insert(playerToRow(player));
+    if (!error) return;
+    // 23505 = unique_violation: la fila ya existe (reinscripción).
+    if (error.code === "23505") {
+      const { error: updErr } = await this.sb
+        .from("players")
+        .update(playerToRow(player))
+        .eq("id", player.id);
+      // 42501 = RLS (no admin y fila ajena): la fila YA está en la nube, ok.
+      if (updErr && updErr.code !== "42501") throw updErr;
+      return;
+    }
+    throw error;
   }
 
   async pushRound(round: Round) {
@@ -291,6 +306,26 @@ export class LiveSync {
       .from("active_effects")
       .upsert(effectToRow(e), { onConflict: "id" });
     if (error) throw error;
+  }
+
+  /**
+   * Inscribe al usuario actual en un torneo de forma atómica (RPC segura).
+   *
+   * La RPC `join_tournament` crea la membership + la fila `players` en una
+   * sola transacción SECURITY DEFINER. Esto evita la condición de carrera del
+   * sink: antes el móvil subía el player ANTES de crear su membership, RLS
+   * rechazaba el INSERT con 403 y la fila nunca llegaba (el PC no veía al
+   * jugador aunque el móvil sí aparecía como miembro). Devuelve el id del player.
+   */
+  async joinTournament(tournamentId: string, teamId: string, displayName: string, avatar: string): Promise<string> {
+    const { data, error } = await this.sb.rpc("join_tournament", {
+      p_tournament_id: tournamentId,
+      p_team_id: teamId,
+      p_display_name: displayName,
+      p_avatar: avatar,
+    });
+    if (error) throw error;
+    return data as string;
   }
 
   /** Borra un efecto activo por id. No-op si no existe. */

@@ -50,12 +50,14 @@ export function makeLiveSink(sb: SupabaseClient, actorId: string, actorRole: Mem
     for (const x of diff.lanes.upserted) await step(() => sync.pushLane(x));
     for (const p of diff.players.upserted) {
       await step(async () => {
-        await sync.pushPlayer(p);
-        // Cada jugador se registra como miembro (rol jugador) salvo que sea el creador,
-        // que ya quedó como admin arriba.
+        // ORDEN CRÍTICO: primero la membership y DESPUÉS el player.
+        // RLS exige ser miembro para insertar en `players`; al revés el
+        // INSERT se rechaza con 403 y el PC nunca ve al jugador (aunque el
+        // móvil sí quede como miembro).
         if (p.userId === actorId && p.tournamentId) {
           await sync.ensureMembership(p.tournamentId, actorId, actorRole);
         }
+        await sync.pushPlayer(p);
       });
     }
 
