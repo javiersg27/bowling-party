@@ -285,6 +285,71 @@ export class LiveSync {
     for (const i of state.inventory.filter((x) => roundIds.has(x.roundId))) await this.pushInventory(i);
   }
 
+  /** Sube un efecto activo (upsert por id). */
+  async pushEffect(e: ActiveEffect) {
+    const { error } = await this.sb
+      .from("active_effects")
+      .upsert(effectToRow(e), { onConflict: "id" });
+    if (error) throw error;
+  }
+
+  /** Borra un efecto activo por id. No-op si no existe. */
+  async deleteEffect(id: string) {
+    const { error } = await this.sb.from("active_effects").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /** Borra una fila de inventario por id. No-op si no existe. */
+  async deleteInventory(id: string) {
+    const { error } = await this.sb.from("player_inventory").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /**
+   * Borra una partida por su clave natural `playerId|roundId`
+   * (coincide con el unique (round_id, player_id) de la tabla).
+   */
+  async deleteGameByKey(key: string) {
+    const [playerId, roundId] = key.split("|");
+    const { error } = await this.sb
+      .from("player_games")
+      .delete()
+      .eq("player_id", playerId)
+      .eq("round_id", roundId);
+    if (error) throw error;
+  }
+
+  /** Borra una asignación pista-jugador por id. No-op si no existe. */
+  async deleteAssignment(id: string) {
+    const { error } = await this.sb.from("round_lane_assignments").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /** Borra una ronda por id. No-op si no existe. */
+  async deleteRound(id: string) {
+    const { error } = await this.sb.from("rounds").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /** Borra un jugador por id. No-op si no existe. */
+  async deletePlayer(id: string) {
+    const { error } = await this.sb.from("players").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /** Borra una pista por id. No-op si no existe. */
+  async deleteLane(id: string) {
+    const { error } = await this.sb.from("lanes").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /** Borra un equipo por id. No-op si no existe. */
+  async deleteTeam(id: string) {
+    const { error } = await this.sb.from("teams").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+
   /**
    * Garantiza mi fila de tournament_members via RPC segura.
    *
