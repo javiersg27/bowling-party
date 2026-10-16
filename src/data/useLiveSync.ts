@@ -45,6 +45,7 @@ export function useLiveSync(
   onChangeRef.current = onChange;
   const statusRef = useRef<SyncStatus>("idle");
   const lastErrorRef = useRef<string | null>(null);
+  const forcePullRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (mode !== "live" || !tournamentId || !supabaseConfigured()) {
@@ -119,6 +120,7 @@ export function useLiveSync(
         }
       }
     };
+    forcePullRef.current = forcePull;
 
     const schedulePull = () => {
       if (debounce !== undefined) window.clearTimeout(debounce);
@@ -172,6 +174,12 @@ export function useLiveSync(
       if (unsub) unsub();
     };
   }, [mode, tournamentId]);
+
+  const forcePull = async () => {
+    const fn = forcePullRef.current;
+    if (!fn) return;
+    await fn();
+  };
 
   return {
     error: errRef.current,
