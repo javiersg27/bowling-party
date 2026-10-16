@@ -208,24 +208,22 @@ export function AdminTournamentPage() {
               <p className="break-all text-center text-sm">{joinUrl}</p>
             </div>
             <div className="card-arcade space-y-2">
-              <BigButton className="w-full" onClick={() => act(() => partyStore.setStatus(t.id, "registration", session.userId))}>
+              <BigButton className="w-full" onClick={() => partyStore.setStatus(t.id, "registration", session.userId)}>
                 Abrir inscripciones
               </BigButton>
               {mode === "live" && (
                 <BigButton
                   className="w-full"
                   color="bg-neon-cyan"
-                  onClick={() => {
-                    act(() => void forceSync());
-                  }}
+                  onClick={() => void forceSync()}
                 >
                   Sincronizar jugadores ahora
                 </BigButton>
               )}
-              <BigButton className="w-full" color="bg-white" onClick={() => act(() => partyStore.setStatus(t.id, "ready", session.userId))}>
+              <BigButton className="w-full" color="bg-white" onClick={() => partyStore.setStatus(t.id, "ready", session.userId)}>
                 Cerrar inscripciones / Preparado
               </BigButton>
-              <BigButton className="w-full" color="bg-neon-lime" onClick={() => act(() => partyStore.startRound(t.id, session.userId))}>
+              <BigButton className="w-full" color="bg-neon-lime" onClick={() => partyStore.startRound(t.id, session.userId)}>
                 Iniciar ronda
               </BigButton>
               <BigButton className="w-full" color="bg-neon-cyan" onClick={() => act(() => partyStore.completeRound(t.id, session.userId))}>
