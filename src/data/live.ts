@@ -282,7 +282,16 @@ export class LiveSync {
   }
 
   async pushEvent(e: GameEvent) {
-    const { error } = await this.sb.from("game_events").insert(eventToRow(e));
+    // RPC segura (SECURITY DEFINER): cualquier MIEMBRO puede registrar eventos.
+    // El INSERT directo exigía ser admin y daba 403 al móvil/PC con sesión
+    // rotada, tumbando la inscripción aunque el jugador YA hubiera quedado.
+    const { error } = await this.sb.rpc("log_game_event", {
+      p_id: e.id,
+      p_tournament_id: e.tournamentId,
+      p_type: e.type ?? "event",
+      p_message: e.message ?? null,
+      p_payload: e.payload ?? {},
+    });
     if (error) throw error;
   }
 
