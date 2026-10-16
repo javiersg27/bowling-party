@@ -110,6 +110,19 @@ export function useLiveSync(
       try {
         await ensureAnonymousSession();
         if (cancelled) return;
+        // Asegurar membresía antes del pull: con RLS, si no somos miembro,
+        // SELECT sobre players devuelve [] sin lanzar error, y el pull parecería
+        // "ok" pero sin jugadores. Esto repara la membresía si falta.
+        try {
+          const sb = getSupabase();
+          const sync = new LiveSync(sb, () => {});
+          const session = await ensureAnonymousSession();
+          if (!session?.user) throw new Error("No se pudo obtener la sesión de Supabase");
+          await sync.ensureMembership(tournamentId, session.user.id, "player");
+        } catch (membershipErr) {
+          // No bloqueamos el pull por esto; si falla, el pull fallará con RLS y
+          // se manejará abajo.
+        }
         await doPull();
       } catch (e) {
         if (!cancelled) {
@@ -165,6 +178,17 @@ export function useLiveSync(
         errRef.current = null;
         lastErrorRef.current = null;
         setStatus("idle");
+        // Asegurar membresía antes del pull inicial: con RLS, si no somos
+        // miembro, SELECT sobre players devuelve [] sin lanzar error y el pull
+        // parecería "ok" pero sin jugadores.
+        try {
+          const session = await ensureAnonymousSession();
+          if (!session?.user) throw new Error("No se pudo obtener la sesión de Supabase");
+          await sync.ensureMembership(tournamentId, session.user.id, "player");
+        } catch (membershipErr) {
+          // No bloqueamos el inicio por esto; el pull fallaría con RLS y se
+          // manejaría en forcePull.
+        }
         // Pull inicial: refleja de inmediato lo que ya haya en la nube.
         void doPull();
         // Respaldo por polling (pausado si la pestaña está oculta).
