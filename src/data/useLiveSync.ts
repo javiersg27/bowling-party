@@ -121,7 +121,9 @@ export function useLiveSync(
             try {
               const sb = getSupabase();
               const sync = new LiveSync(sb, () => {});
-              await sync.ensureMembership(tournamentId, (await ensureAnonymousSession()).user.id, "player");
+              const session = await ensureAnonymousSession();
+              if (!session?.user) throw new Error("No se pudo obtener la sesión de Supabase");
+              await sync.ensureMembership(tournamentId, session.user.id, "player");
               await doPull();
               errRef.current = null;
               lastErrorRef.current = null;
