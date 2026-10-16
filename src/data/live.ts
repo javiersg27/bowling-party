@@ -226,19 +226,19 @@ export class LiveSync {
   }
 
   async pushTeam(team: Team) {
-    await this.upsert("teams", teamToRow(team), "id");
+    await this.upsert("teams", teamToRow(team), "id,tournament_id,name");
   }
 
   async pushLane(lane: Lane) {
-    await this.upsert("lanes", laneToRow(lane), "id");
+    await this.upsert("lanes", laneToRow(lane), "id,tournament_id,number");
   }
 
   async pushPlayer(player: Player) {
-    await this.upsert("players", playerToRow(player), "id");
+    await this.upsert("players", playerToRow(player), "id,tournament_id,user_id");
   }
 
   async pushRound(round: Round) {
-    await this.upsert("rounds", roundToRow(round), "id");
+    await this.upsert("rounds", roundToRow(round), "id,tournament_id,kind");
   }
 
   async pushAssignment(a: LaneAssignment) {
