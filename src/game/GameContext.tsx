@@ -198,7 +198,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       connected,
       liveError,
       syncStatus: liveSyncStatus,
-      syncError: partyStore.lastSyncError ?? liveError,
+      syncError: liveError,
       reducedMotion,
       muted,
       setMuted: (v) => {

@@ -4,6 +4,7 @@ import type {
   InventoryItem,
   Lane,
   LaneAssignment,
+  MemberRole,
   ModifierActivation,
   Player,
   PlayerGame,
@@ -310,6 +311,17 @@ export class LiveSync {
       },
       "id",
     );
+  }
+
+  /** Garantiza que el usuario sea miembro del torneo (crea o actualiza la fila en tournament_members). */
+  async ensureMembership(tournamentId: string, userId: string, role: MemberRole = "player") {
+    const { error } = await this.sb
+      .from("tournament_members")
+      .upsert(
+        { tournament_id: tournamentId, user_id: userId, role },
+        { onConflict: "tournament_id,user_id" },
+      );
+    if (error) throw error;
   }
 
   /** Borra una fila por id. Tolerante: ignora "no encontrado". */

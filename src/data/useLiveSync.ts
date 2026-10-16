@@ -114,6 +114,27 @@ export function useLiveSync(
       } catch (e) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : "No se pudo sincronizar.";
+          // Si falla por RLS (no somos miembro), intentamos auto-reparar la
+          // membresía y reintentamos el pull una vez.
+          const isRLS = String(msg).includes("42501") || String(msg).includes("row-level security");
+          if (isRLS) {
+            try {
+              const sb = getSupabase();
+              const sync = new LiveSync(sb, () => {});
+              await sync.ensureMembership(tournamentId, (await ensureAnonymousSession()).user.id, "player");
+              await doPull();
+              errRef.current = null;
+              lastErrorRef.current = null;
+              setStatus("ok");
+              return;
+            } catch (e2) {
+              const msg2 = e2 instanceof Error ? e2.message : "No se pudo reparar la membresía.";
+              errRef.current = msg2;
+              lastErrorRef.current = msg2;
+              setStatus("error");
+              return;
+            }
+          }
           errRef.current = msg;
           lastErrorRef.current = msg;
           setStatus("error");
