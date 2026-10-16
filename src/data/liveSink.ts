@@ -68,7 +68,10 @@ export function makeLiveSink(sb: SupabaseClient, actorId: string, actorRole: Mem
     for (const i of diff.inventory.upserted) await step(() => sync.pushInventory(i));
     for (const e of diff.effects.upserted) await step(() => sync.pushEffect(e));
     for (const a of diff.activations.upserted) await step(() => sync.pushActivation(a));
-    for (const e of diff.events.upserted) await step(() => sync.pushEvent(e));
+    // Eventos: DESACTIVADOS temporalmente. La RPC log_game_event devuelve 400
+    // (PostgREST no acepta el payload) y su error abortaba el sink.
+    // Los eventos son solo feed decorativo; jugadores/rondas siguen sincronizando.
+    // for (const e of diff.events.upserted) await step(() => sync.pushEvent(e));
 
     // --- 4. Borrados (orden inverso aprox.) ---
     for (const id of diff.effects.deleted) await step(() => sync.deleteEffect(id));
