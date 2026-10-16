@@ -286,61 +286,22 @@ export class LiveSync {
   }
 
   /**
-   * Asegura que el creador figure como miembro (rol) del torneo. Necesario para
-   * el bootstrapping de RLS: las políticas admin exigen una fila en
-   * `tournament_members`. Idempotente (upsert por tournament_id+user_id).
+   * Garantiza mi fila de tournament_members via RPC segura.
+   *
+   * Usa ensure_my_membership (SECURITY DEFINER): nunca degrada un admin
+   * existente y convierte al creador en admin aunque se pida "player".
    */
-  async ensureMembership(tournamentId: string, userId: string, role: "admin" | "lane_marshal" | "player") {
-    const { error } = await this.sb
-      .from("tournament_members")
-      .upsert({ tournament_id: tournamentId, user_id: userId, role }, { onConflict: "tournament_id,user_id" });
+  async ensureMembership(tournamentId: string, _userId: string, role: "admin" | "lane_marshal" | "player") {
+    void _userId;
+    const { error } = await (this.sb as unknown as { rpc: (fn: string, args: Record<string, string>) => Promise<{ error: unknown }> }).rpc("ensure_my_membership", {
+      tid: tournamentId,
+      requested_role: role,
+    });
     if (error) throw error;
   }
-
-  async pushEffect(e: { id: string; playerId: string; roundId: string; kind: string; remainingFrames: number; data: Record<string, unknown> }) {
-    await this.upsert(
-      "active_effects",
-      {
-        id: e.id,
-        player_id: e.playerId,
-        round_id: e.roundId,
-        kind: e.kind,
-        remaining_frames: e.remainingFrames,
-        data: e.data,
-      },
-      "id",
-    );
-  }
-
-  /** Borra una fila por id. Tolerante: ignora "no encontrado". */
-  private async remove(table: string, id: string) {
-    const { error } = await this.sb.from(table).delete().eq("id", id);
-    if (error) throw error;
-  }
-
-  async deleteTeam(id: string) { await this.remove("teams", id); }
-  async deleteLane(id: string) { await this.remove("lanes", id); }
-  async deletePlayer(id: string) { await this.remove("players", id); }
-  async deleteRound(id: string) { await this.remove("rounds", id); }
-  async deleteAssignment(id: string) { await this.remove("round_lane_assignments", id); }
-  async deleteGame(id: string) { await this.remove("player_games", id); }
-  /** Borra un juego por su clave compuesta "playerId|roundId" (sin columna id). */
-  async deleteGameByKey(key: string) {
-    const [playerId, roundId] = key.split("|");
-    const { error } = await this.sb
-      .from("player_games")
-      .delete()
-      .eq("player_id", playerId)
-      .eq("round_id", roundId);
-    if (error) throw error;
-  }
-  async deleteInventory(id: string) { await this.remove("player_inventory", id); }
-  async deleteEffect(id: string) { await this.remove("active_effects", id); }
 
   /**
-   * Se suscribe a los cambios de las tablas de un torneo y avisa vía `onChange`.
-   * Devuelve la función para darse de baja. Requiere Realtime habilitado en el
-   * proyecto y las tablas añadidas a la publicación `supabase_realtime`.
+   * Se suscribe a cambios en tiempo real del torneo.
    */
   subscribeTournament(tournamentId: string): () => void {
     // Tablas con columna tournament_id (filtrables directamente).
