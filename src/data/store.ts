@@ -95,7 +95,58 @@ export class PartyStore {
 
   syncFullState() {
     if (!this.syncSink) return;
-    const diff = diffStates(emptyState(), this.state);
+    // Excluir el torneo demo aislado (createdBy === "demo-admin"): nunca debe sincronizarse
+    // con Supabase para evitar 403 en player_games y otras tablas protegidas por RLS.
+    const nonDemoState: EngineState = {
+      ...this.state,
+      tournaments: this.state.tournaments.filter((t) => t.createdBy !== "demo-admin"),
+      teams: this.state.teams.filter((x) => {
+        const t = this.state.tournaments.find((tm) => tm.id === x.tournamentId);
+        return t && t.createdBy !== "demo-admin";
+      }),
+      lanes: this.state.lanes.filter((x) => {
+        const t = this.state.tournaments.find((tm) => tm.id === x.tournamentId);
+        return t && t.createdBy !== "demo-admin";
+      }),
+      players: this.state.players.filter((x) => {
+        const t = this.state.tournaments.find((tm) => tm.id === x.tournamentId);
+        return t && t.createdBy !== "demo-admin";
+      }),
+      rounds: this.state.rounds.filter((x) => {
+        const t = this.state.tournaments.find((tm) => tm.id === x.tournamentId);
+        return t && t.createdBy !== "demo-admin";
+      }),
+      assignments: this.state.assignments.filter((x) => {
+        const r = this.state.rounds.find((rnd) => rnd.id === x.roundId);
+        const t = r ? this.state.tournaments.find((tm) => tm.id === r.tournamentId) : null;
+        return t && t.createdBy !== "demo-admin";
+      }),
+      games: this.state.games.filter((x) => {
+        const r = this.state.rounds.find((rnd) => rnd.id === x.roundId);
+        const t = r ? this.state.tournaments.find((tm) => tm.id === r.tournamentId) : null;
+        return t && t.createdBy !== "demo-admin";
+      }),
+      inventory: this.state.inventory.filter((x) => {
+        const r = this.state.rounds.find((rnd) => rnd.id === x.roundId);
+        const t = r ? this.state.tournaments.find((tm) => tm.id === r.tournamentId) : null;
+        return t && t.createdBy !== "demo-admin";
+      }),
+      activations: this.state.activations.filter((x) => {
+        const r = this.state.rounds.find((rnd) => rnd.id === x.roundId);
+        const t = r ? this.state.tournaments.find((tm) => tm.id === r.tournamentId) : null;
+        return t && t.createdBy !== "demo-admin";
+      }),
+      effects: this.state.effects.filter((x) => {
+        const r = this.state.rounds.find((rnd) => rnd.id === x.roundId);
+        const t = r ? this.state.tournaments.find((tm) => tm.id === r.tournamentId) : null;
+        return t && t.createdBy !== "demo-admin";
+      }),
+      events: this.state.events.filter((x) => {
+        const t = this.state.tournaments.find((tm) => tm.id === x.tournamentId);
+        return t && t.createdBy !== "demo-admin";
+      }),
+    };
+    const diff = diffStates(emptyState(), nonDemoState);
     if (isEmptyDiff(diff)) return;
     Promise.resolve()
       .then(() => this.syncSink!(diff))

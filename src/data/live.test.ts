@@ -138,12 +138,15 @@ describe("mapeo motor (camelCase) ↔ Supabase (snake_case)", () => {
     expect(inventoryFromRow(row)).toEqual(inventory);
   });
 
-  it("player descarta uniqueKey al subir y lo deriva de user_id al bajar", () => {
+  it("player descarta uniqueKey al subir y lo deriva de user_id al bajar; mapea displayName", () => {
     const row = playerToRow(player);
     expect(row.uniqueKey).toBeUndefined();
     expect(row.user_id).toBe("u1");
+    expect(row.display_name).toBe("Ada");
+    expect(row.displayName).toBeUndefined();
     const back = playerFromRow(row);
     expect(back.userId).toBe("u1");
+    expect(back.displayName).toBe("Ada");
     expect(back.uniqueKey).toBe("u1");
   });
 

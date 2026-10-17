@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { AVATARS } from "../domain/types";
 import { partyStore } from "../data/store";
 import { getSupabase, supabaseConfigured } from "../data/supabase";
+import { LiveSync } from "../data/live";
 import { fetchJoinBundle } from "../data/hydrate";
 import { useGame } from "../game/GameContext";
 import { BigButton, Title } from "../ui/Shell";
@@ -84,6 +85,19 @@ export function JoinPage() {
         avatar,
         teamId: teamId || undefined,
       });
+
+      // En modo vivo aseguramos la subida explícita a Supabase antes de navegar.
+      // Así garantizamos que la membresía y el jugador quedan guardados en la nube
+      // (y si hubiera un error de red o RLS, se captura y muestra aquí al usuario).
+      if (mode === "live" && supabaseConfigured()) {
+        const t = partyStore.state.tournaments.find((x) => x.accessCode === code.toUpperCase());
+        if (t) {
+          const sync = new LiveSync(getSupabase(), () => {});
+          await sync.ensureMembership(t.id, userId, "player");
+          await sync.pushPlayer(player);
+        }
+      }
+
       beep("item", muted);
       nav(`/t/${code.toUpperCase()}/jugador`);
       void player;

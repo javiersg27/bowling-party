@@ -34,8 +34,11 @@ export function makeLiveSink(sb: SupabaseClient, actorId: string, actorRole: Mem
       }
     };
 
+    const isAdmin = actorRole === "admin";
+
     // --- 1. Torneos ---
     for (const t of diff.tournaments.upserted) {
+      if (t.createdBy !== actorId && !isAdmin) continue;
       await step(async () => {
         await sync.pushTournament(t);
         // Si somos el creador y el torneo es nuevo, garantizamos membership admin.
@@ -46,8 +49,10 @@ export function makeLiveSink(sb: SupabaseClient, actorId: string, actorRole: Mem
     }
 
     // --- 2. Equipos, pistas, jugadores ---
-    for (const x of diff.teams.upserted) await step(() => sync.pushTeam(x));
-    for (const x of diff.lanes.upserted) await step(() => sync.pushLane(x));
+    if (isAdmin) {
+      for (const x of diff.teams.upserted) await step(() => sync.pushTeam(x));
+      for (const x of diff.lanes.upserted) await step(() => sync.pushLane(x));
+    }
     for (const p of diff.players.upserted) {
       await step(async () => {
         // ORDEN CRÍTICO: primero la membership y DESPUÉS el player.
@@ -57,31 +62,38 @@ export function makeLiveSink(sb: SupabaseClient, actorId: string, actorRole: Mem
         if (p.userId === actorId && p.tournamentId) {
           await sync.ensureMembership(p.tournamentId, actorId, actorRole);
         }
-        await sync.pushPlayer(p);
+        if (p.userId === actorId || isAdmin) {
+          await sync.pushPlayer(p);
+        }
       });
     }
 
     // --- 3. Rondas y todo lo que cuelga de ellas ---
-    for (const r of diff.rounds.upserted) await step(() => sync.pushRound(r));
-    for (const a of diff.assignments.upserted) await step(() => sync.pushAssignment(a));
-    for (const g of diff.games.upserted) await step(() => sync.pushGame(g));
+    if (isAdmin) {
+      for (const r of diff.rounds.upserted) await step(() => sync.pushRound(r));
+      for (const a of diff.assignments.upserted) await step(() => sync.pushAssignment(a));
+      for (const g of diff.games.upserted) await step(() => sync.pushGame(g));
+    }
     for (const i of diff.inventory.upserted) await step(() => sync.pushInventory(i));
     for (const e of diff.effects.upserted) await step(() => sync.pushEffect(e));
     for (const a of diff.activations.upserted) await step(() => sync.pushActivation(a));
-    // Eventos: DESACTIVADOS temporalmente. La RPC log_game_event devuelve 400
-    // (PostgREST no acepta el payload) y su error abortaba el sink.
-    // Los eventos son solo feed decorativo; jugadores/rondas siguen sincronizando.
-    // for (const e of diff.events.upserted) await step(() => sync.pushEvent(e));
+    // Eventos: pushEvent es no-op (feed decorativo desactivado). Se mantiene la
+    // llamada para no perder el flujo cuando se reactive.
+    for (const e of diff.events.upserted) await step(() => sync.pushEvent(e));
 
     // --- 4. Borrados (orden inverso aprox.) ---
     for (const id of diff.effects.deleted) await step(() => sync.deleteEffect(id));
     for (const id of diff.inventory.deleted) await step(() => sync.deleteInventory(id));
-    for (const key of diff.games.deleted) await step(() => sync.deleteGameByKey(key));
-    for (const id of diff.assignments.deleted) await step(() => sync.deleteAssignment(id));
-    for (const id of diff.rounds.deleted) await step(() => sync.deleteRound(id));
+    if (isAdmin) {
+      for (const key of diff.games.deleted) await step(() => sync.deleteGameByKey(key));
+      for (const id of diff.assignments.deleted) await step(() => sync.deleteAssignment(id));
+      for (const id of diff.rounds.deleted) await step(() => sync.deleteRound(id));
+    }
     for (const id of diff.players.deleted) await step(() => sync.deletePlayer(id));
-    for (const id of diff.lanes.deleted) await step(() => sync.deleteLane(id));
-    for (const id of diff.teams.deleted) await step(() => sync.deleteTeam(id));
+    if (isAdmin) {
+      for (const id of diff.lanes.deleted) await step(() => sync.deleteLane(id));
+      for (const id of diff.teams.deleted) await step(() => sync.deleteTeam(id));
+    }
     // Nota: no borramos torneos desde el cliente (se archivan por status).
 
     if (firstError !== null) throw firstError;

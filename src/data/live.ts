@@ -88,7 +88,12 @@ const INVENTORY_MAP: Record<string, string> = {
   grantedFrame: "granted_frame",
   choiceIds: "choice_ids",
 };
-const PLAYER_MAP: Record<string, string> = { tournamentId: "tournament_id", teamId: "team_id", userId: "user_id" };
+const PLAYER_MAP: Record<string, string> = {
+  tournamentId: "tournament_id",
+  teamId: "team_id",
+  userId: "user_id",
+  displayName: "display_name",
+};
 const ACTIVATION_MAP: Record<string, string> = {
   inventoryId: "inventory_id",
   modifierId: "modifier_id",
@@ -282,17 +287,12 @@ export class LiveSync {
   }
 
   async pushEvent(e: GameEvent) {
-    // RPC segura (SECURITY DEFINER): cualquier MIEMBRO puede registrar eventos.
-    // El INSERT directo exigía ser admin y daba 403 al móvil/PC con sesión
-    // rotada, tumbando la inscripción aunque el jugador YA hubiera quedado.
-    const { error } = await this.sb.rpc("log_game_event", {
-      p_id: e.id,
-      p_tournament_id: e.tournamentId,
-      p_type: e.type ?? "event",
-      p_message: e.message ?? null,
-      p_payload: e.payload ?? {},
-    });
-    if (error) throw error;
+    // DESACTIVADO: los eventos son solo feed decorativo y su envío rompía la
+    // inscripción (primero 403 por RLS, luego 400 en la RPC log_game_event).
+    // No-op intencionado hasta tener una RPC estable. Jugadores/rondas siguen
+    // sincronizando con normalidad.
+    void e;
+    return;
   }
 
   /** Vuelca el estado completo (útil al crear/unirse a un torneo). */
@@ -462,9 +462,11 @@ export function eventFromRow(row: Row): GameEvent {
  * Al subir se descarta; al bajar se deriva de `user_id`.
  */
 export function playerToRow(p: Player): Row {
-  const { uniqueKey: _uniqueKey, ...rest } = p;
+  // `uniqueKey` no existe en SQL; se deriva de `user_id` al bajar. Se descarta
+  // antes del upsert para que PostgREST no falle en `check` ni `function`.
+  const { uniqueKey: _uniqueKey, ...rowToUpload } = p;
   void _uniqueKey;
-  return toRow(rest as unknown as Row, PLAYER_MAP);
+  return toRow(rowToUpload as unknown as Row, PLAYER_MAP);
 }
 export function playerFromRow(row: Row): Player {
   const p = fromRow<Player>(row, PLAYER_MAP);
