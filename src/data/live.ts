@@ -213,12 +213,26 @@ export class LiveSync {
 
   async pushTournament(t: Tournament) {
     const row = tournamentToRow(t);
-    // Upsert idempotente por PK `id`. Para un torneo nuevo el upsert resuelve en
-    // INSERT (evalúa sólo la política INSERT: created_by = auth.uid() → el
-    // creador puede insertar). Para un torneo existente resuelve en UPDATE
-    // (evalúa la política UPDATE: is_tournament_admin(id) → el creador ya es
-    // admin porque su membership se creó al insertarlo por primera vez).
-    await this.upsert("tournaments", row, "id");
+    // Intento INSERT primero (torneo nuevo): evalúa sólo la política INSERT
+    // (created_by = auth.uid()) → el creador puede insertar.
+    const inserted = await this.sb.from("tournaments").insert(row);
+    if (!inserted.error) return;
+    // 23505 = unique_violation: el torneo ya existe en la nube.
+    if (inserted.error.code === "23505") {
+      // Aseguramos membership admin del creador para poder actualizar (RLS
+      // exige is_tournament_admin en la política UPDATE). La membership se
+      // crea con auth.uid() que coincide con t.createdBy (filtrado en el sink).
+      try {
+        await this.ensureMembership(t.id, t.createdBy, "admin");
+      } catch {
+        // Si falla la membership, seguimos intentando el UPDATE abajo.
+      }
+      const { error } = await this.sb.from("tournaments").update(row).eq("id", t.id);
+      // 42501 = RLS (no admin aún): la fila YA está en la nube, ok.
+      if (error && error.code !== "42501") throw error;
+      return;
+    }
+    throw inserted.error;
   }
 
   async pushTeam(team: Team) {
