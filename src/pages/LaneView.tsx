@@ -2,6 +2,7 @@ import { useParams } from "react-router-dom";
 import { partyStore } from "../data/store";
 import { useGame } from "../game/GameContext";
 import { scoreGame, validateRoll } from "../domain/bowling";
+import { currentTurnPlayerId } from "../domain/turn";
 import { BigButton, Title } from "../ui/Shell";
 import { beep } from "../ui/audio";
 import { uid } from "../domain/ids";
@@ -13,7 +14,14 @@ export function LaneViewPage() {
   const lane = state.lanes.find((l) => l.id === laneId) ?? state.lanes.find((l) => l.tournamentId === t?.id);
   const round = state.rounds.find((r) => r.tournamentId === t?.id && r.status === "live") ?? state.rounds.find((r) => r.tournamentId === t?.id);
   const games = state.games.filter((g) => g.roundId === round?.id && g.laneId === lane?.id);
+  const assignments = state.assignments.filter((a) => a.roundId === round?.id && a.laneId === lane?.id);
   const isAdmin = session.isAdmin || lane?.marshalId === session.userId;
+
+  // Quién tira ahora (para el indicador visual)
+  const turnPlayerId =
+    round?.status === "live" && lane
+      ? currentTurnPlayerId(games, assignments, lane.id, round.id)
+      : null;
 
   const add = (playerId: string, pins: number) => {
     const g = games.find((x) => x.playerId === playerId);
@@ -41,16 +49,39 @@ export function LaneViewPage() {
   return (
     <div>
       <Title text={lane?.name ?? "Pista"} sub="Introduce los bolos derribados. El sistema calcula strikes, spares y el décimo frame." />
+
+      {/* Indicador de turno */}
+      {turnPlayerId && (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-neon-gold/20 px-4 py-3">
+          <span className="text-3xl">
+            {state.players.find((p) => p.id === turnPlayerId)?.avatar ?? "🎳"}
+          </span>
+          <div>
+            <p className="font-display text-xl">
+              Turno de {state.players.find((p) => p.id === turnPlayerId)?.displayName}
+            </p>
+            <p className="text-sm opacity-70">
+              {isAdmin ? "Los jugadores tiran desde su móvil · el admin puede introducir manualmente abajo" : "Esperando tirada…"}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         {games.map((g) => {
           const p = state.players.find((x) => x.id === g.playerId);
           const team = state.teams.find((x) => x.id === p?.teamId);
           const s = scoreGame(g.rolls);
+          const isCurrentTurn = g.playerId === turnPlayerId;
           return (
-            <div key={g.playerId} className="card-arcade">
+            <div
+              key={g.playerId}
+              className={`card-arcade transition-all ${isCurrentTurn ? "ring-2 ring-neon-gold" : ""}`}
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-display text-2xl">
+                    {isCurrentTurn && <span className="mr-1 text-neon-gold">▶</span>}
                     {p?.avatar} {p?.displayName}
                   </p>
                   <p style={{ color: team?.color }}>{team?.name}</p>
@@ -70,7 +101,7 @@ export function LaneViewPage() {
                   </div>
                 ))}
               </div>
-              {isAdmin && !g.complete && (
+              {isAdmin && !g.complete && g.playerId === turnPlayerId && (
                 <div className="mt-3 flex flex-wrap gap-1">
                   {Array.from({ length: s.nextRollMax + 1 }, (_, pins) => (
                     <button
@@ -92,7 +123,7 @@ export function LaneViewPage() {
           <BigButton
             color="bg-white"
             onClick={() => {
-              const pid = games[0]?.playerId;
+              const pid = turnPlayerId ?? games[0]?.playerId;
               const total = Number(prompt("Total excepcional (0-300). Quedará auditado.") ?? "");
               if (!pid || Number.isNaN(total)) return;
               partyStore.recordRoll({

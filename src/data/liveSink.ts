@@ -14,6 +14,10 @@ import type { MemberRole } from "../domain/types";
  *   4. borrados (en orden inverso para no dejar huérfanas)
  *
  * `actorId` es el `auth.uid()` real; se usa para la membership del jugador.
+ * `actorPlayerId` es el `id` en la tabla `players` del usuario actual. Se
+ *  necesita para que un jugador (no admin) pueda subir su propio juego en el
+ *  self-roll (política `games_update_own`). Si se omite, el jugador no podrá
+ *  subir sus propias partidas.
  *
  * Es **tolerante a fallos parciales**: cada fila se empuja de forma aislada y un
  * error (p. ej. el torneo demo con `created_by` "demo-admin", que no es un uuid
@@ -21,7 +25,13 @@ import type { MemberRole } from "../domain/types";
  * el primer error y se relanza al final para que quede registrado en
  * `lastSyncError`, pero solo después de haber intentado todo lo demás.
  */
-export function makeLiveSink(sb: SupabaseClient, actorId: string, actorRole: MemberRole = "player"): SyncSink {
+export function makeLiveSink(
+  sb: SupabaseClient,
+  actorId: string,
+  actorRole: MemberRole = "player",
+  /** `id` del jugador en la tabla `players` del usuario actual (para self-roll). */
+  actorPlayerId?: string,
+): SyncSink {
   const sync = new LiveSync(sb, () => {});
 
   return async (diff: StateDiff) => {
@@ -72,7 +82,14 @@ export function makeLiveSink(sb: SupabaseClient, actorId: string, actorRole: Mem
     if (isAdmin) {
       for (const r of diff.rounds.upserted) await step(() => sync.pushRound(r));
       for (const a of diff.assignments.upserted) await step(() => sync.pushAssignment(a));
-      for (const g of diff.games.upserted) await step(() => sync.pushGame(g));
+    }
+    // Juegos: admin sube todos; un jugador puede subir su propio juego (self-roll).
+    // La política `games_update_own` de Supabase permite UPDATE cuando el
+    // player_id del juego corresponde a players.user_id = auth.uid().
+    for (const g of diff.games.upserted) {
+      if (isAdmin || (actorPlayerId && g.playerId === actorPlayerId)) {
+        await step(() => sync.pushGame(g));
+      }
     }
     for (const i of diff.inventory.upserted) await step(() => sync.pushInventory(i));
     for (const e of diff.effects.upserted) await step(() => sync.pushEffect(e));

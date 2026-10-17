@@ -6,9 +6,11 @@ import { useGame } from "../game/GameContext";
 import { modifierById, MODIFIER_CATALOG } from "../domain/modifiers";
 import { scoreGame } from "../domain/bowling";
 import { laneRanking } from "../domain/lanePlaces";
+import { currentTurnPlayerId } from "../domain/turn";
 import { BigButton, Flash, Title } from "../ui/Shell";
 import { beep } from "../ui/audio";
 import { ROUND_NAME } from "../ui/labels";
+import { uid } from "../domain/ids";
 
 export function PlayerPage() {
   const { code } = useParams();
@@ -20,6 +22,7 @@ export function PlayerPage() {
   const [target, setTarget] = useState<string>("");
   const [msg, setMsg] = useState("");
   const [pinsGuess, setPinsGuess] = useState(10);
+  const [rollError, setRollError] = useState<string | null>(null);
 
   if (!t || !player) {
     return (
@@ -37,6 +40,7 @@ export function PlayerPage() {
   const game = state.games.find((g) => g.playerId === player.id && g.roundId === liveRound?.id);
   const lane = state.lanes.find((l) => l.id === game?.laneId);
   const laneGames = state.games.filter((g) => g.roundId === liveRound?.id && g.laneId === game?.laneId);
+  const laneAssignments = state.assignments.filter((a) => a.roundId === liveRound?.id && a.laneId === game?.laneId);
   const ranking = laneRanking(laneGames);
   const place = ranking.find((r) => r.playerId === player.id)?.place;
   const inventory = state.inventory.filter((i) => i.playerId === player.id && i.roundId === liveRound?.id && (i.status === "held" || i.status === "waiting_choice"));
@@ -45,6 +49,35 @@ export function PlayerPage() {
   const teammates = state.players.filter((p) => p.teamId === player.teamId && !p.banned);
   const scored = game ? scoreGame(game.rolls) : null;
   const selected = inventory.find((i) => i.id === picked);
+
+  // ── Lógica de turnos ──────────────────────────────────────────────────────
+  const isRoundLive = liveRound?.status === "live";
+  const isRound1WithModifiers = liveRound?.kind === 1;
+  const turnPlayerId =
+    isRoundLive && game && lane
+      ? currentTurnPlayerId(laneGames, laneAssignments, lane.id, liveRound!.id)
+      : null;
+  const isMyTurn = turnPlayerId === player.id;
+  const turnPlayer = state.players.find((p) => p.id === turnPlayerId);
+
+  // Tirada desde el móvil
+  const handleRoll = (pins: number) => {
+    if (!game || !liveRound) return;
+    setRollError(null);
+    try {
+      partyStore.recordRoll({
+        playerId: player.id,
+        roundId: liveRound.id,
+        pins,
+        actorId: session.userId,
+        expectedVersion: game.version,
+        idempotencyKey: uid("roll"),
+      });
+      beep(pins === 10 ? "strike" : "click", muted);
+    } catch (e) {
+      setRollError(e instanceof Error ? e.message : "Error al registrar tirada");
+    }
+  };
 
   const activate = () => {
     if (!selected) return;
@@ -103,7 +136,49 @@ export function PlayerPage() {
           ))}
         </div>
       )}
-      {liveRound?.kind === 1 && (
+
+      {/* ── Panel de tirada ── */}
+      {isRoundLive && game && !game.complete && scored && (
+        <div className="card-arcade">
+          {isMyTurn ? (
+            <>
+              <p className="mb-3 font-display text-2xl text-neon-lime">🎳 ¡Tu turno! Derriba los bolos</p>
+              <p className="mb-2 text-sm opacity-70">
+                Frame {scored.currentFrame} · Máximo: {scored.nextRollMax} bolos
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {Array.from({ length: scored.nextRollMax + 1 }, (_, pins) => (
+                  <button
+                    key={pins}
+                    onClick={() => handleRoll(pins)}
+                    className="h-12 w-12 rounded-xl bg-neon-gold font-black text-ink text-lg shadow"
+                  >
+                    {pins}
+                  </button>
+                ))}
+              </div>
+              {rollError && <p className="mt-2 font-black text-red-400">{rollError}</p>}
+            </>
+          ) : (
+            <div className="flex items-center gap-3 py-2">
+              <span className="text-4xl">{turnPlayer?.avatar ?? "🎳"}</span>
+              <div>
+                <p className="font-display text-xl">Turno de {turnPlayer?.displayName ?? "…"}</p>
+                <p className="text-sm opacity-70">Espera tu turno para tirar</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {game?.complete && (
+        <div className="card-arcade bg-neon-lime/20">
+          <p className="font-display text-2xl">¡Partida completada! 🏆</p>
+          <p className="text-sm opacity-70">Puntuación oficial: {game.official}</p>
+        </div>
+      )}
+
+      {/* ── Inventario de modificadores (solo en Ronda 1) ── */}
+      {isRound1WithModifiers && (
         <div className="card-arcade">
           <p className="font-display text-2xl">Inventario</p>
           <div className="mt-3 grid grid-cols-2 gap-2">

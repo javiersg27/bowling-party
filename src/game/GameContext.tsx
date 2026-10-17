@@ -176,7 +176,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (session.userId !== authUserId) {
           persistSession({ ...session, userId: authUserId });
         }
-        partyStore.setSyncSink(makeLiveSink(sb, authUserId, session.isAdmin ? "admin" : "player"));
+        // Derivamos el playerId (tabla `players`) del usuario actual para
+        // que el sink pueda subir su propio juego durante el self-roll.
+        const actorPlayer = partyStore.state.players.find(
+          (p) => p.userId === authUserId,
+        );
+        partyStore.setSyncSink(
+          makeLiveSink(sb, authUserId, session.isAdmin ? "admin" : "player", actorPlayer?.id),
+        );
       } catch (e) {
         // No fatal: seguimos en local. El error se refleja en liveError del hook.
         if (!cancelled) liveUserIdRef.current = null;

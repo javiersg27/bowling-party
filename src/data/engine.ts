@@ -1,4 +1,5 @@
 import { autoSpreadPlayers } from "../domain/assignment";
+import { currentTurnPlayerId } from "../domain/turn";
 import { applyRoll, frameJustCompleted, scoreGame, validateRoll } from "../domain/bowling";
 import { buildFinalPlan, lockFinalStandings } from "../domain/finals";
 import { accessCode, nowIso, uid } from "../domain/ids";
@@ -424,6 +425,16 @@ export function recordRoll(
   const player = state.players.find((p) => p.id === args.playerId)!;
   const t = mustTournament(state, player.tournamentId);
   if (t.status === "paused") throw new Error("El torneo está en pausa.");
+
+  // Orden de turno: solo puede tirar el jugador al que le toca en esta pista.
+  // Avanzamos frame a frame y, dentro de un frame, por `assignment.order` ascendente.
+  const turnId = currentTurnPlayerId(state.games, state.assignments, game.laneId, args.roundId);
+  const turnPlayer = turnId ? state.players.find((p) => p.id === turnId) : undefined;
+  if (turnId === null || args.playerId !== turnId) {
+    const quien = turnPlayer ? `Le toca a ${turnPlayer.displayName}.` : "No hay turno activo en esta pista.";
+    throw new Error(`No es tu turno de tirar. ${quien}`);
+  }
+
   if (game.version !== args.expectedVersion) {
     throw new Error("El marcador ha cambiado. Recarga e inténtalo de nuevo (concurrencia).");
   }
