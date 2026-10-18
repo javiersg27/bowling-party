@@ -176,13 +176,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (session.userId !== authUserId) {
           persistSession({ ...session, userId: authUserId });
         }
-        // Derivamos el playerId (tabla `players`) del usuario actual para
-        // que el sink pueda subir su propio juego durante el self-roll.
-        const actorPlayer = partyStore.state.players.find(
-          (p) => p.userId === authUserId,
-        );
+        // Getter dinámico para el playerId (tabla `players`) del usuario actual.
+        // Permite que el sink resuelva el id del jugador incluso si se inscribe
+        // después de que el hook monte.
         partyStore.setSyncSink(
-          makeLiveSink(sb, authUserId, session.isAdmin ? "admin" : "player", actorPlayer?.id),
+          makeLiveSink(
+            sb,
+            authUserId,
+            session.isAdmin ? "admin" : "player",
+            () => partyStore.state.players.find((p) => p.userId === authUserId)?.id,
+          ),
         );
       } catch (e) {
         // No fatal: seguimos en local. El error se refleja en liveError del hook.
@@ -193,8 +196,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       partyStore.setSyncSink(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, session.isAdmin]);
 
   const value = useMemo<GameCtx>(
     () => ({

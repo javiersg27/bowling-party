@@ -217,11 +217,37 @@ export function mergeRemoteState(state: EngineState, remote: RemoteState): Engin
   return merged;
 }
 
-/** Reconcilia `games` por su clave natural (playerId, roundId). Remoto gana. */
+/**
+ * Reconcilia `games` por su clave natural (playerId, roundId).
+ * En conflicto, gana el juego con mayor `version` (optimistic UI local-first).
+ * Si las versiones son iguales, gana el que tenga más tiradas (`rolls.length`),
+ * y en caso de empate total gana el remoto como fuente canónica de verdad.
+ */
 function mergeGames(local: PlayerGame[], remote: PlayerGame[]): PlayerGame[] {
   const key = (g: PlayerGame) => `${g.playerId}|${g.roundId}`;
   if (remote.length === 0) return local;
   const map = new Map(local.map((g) => [key(g), g]));
-  for (const g of remote) map.set(key(g), g);
+  for (const r of remote) {
+    const k = key(r);
+    const l = map.get(k);
+    if (!l) {
+      map.set(k, r);
+      continue;
+    }
+    // Si la versión local es mayor, se conserva local (tirada optimista aún no reflejada en la nube)
+    if (l.version > r.version) {
+      continue;
+    }
+    // Si la versión remota es mayor, la nube está más actualizada
+    if (r.version > l.version) {
+      map.set(k, r);
+      continue;
+    }
+    // Mismas versiones: si local tiene más tiradas registradas, conservamos local
+    if (l.rolls.length > r.rolls.length) {
+      continue;
+    }
+    map.set(k, r);
+  }
   return Array.from(map.values());
 }

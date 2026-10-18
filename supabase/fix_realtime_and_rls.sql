@@ -7,6 +7,7 @@
 -- 1. Aplicar Row Level Security (RLS) si aún no está aplicado
 -- ----------------------------------------------------------------------------
 \ir supabase/migrations/002_rls.sql
+\ir supabase/migrations/003_player_game_rls.sql
 
 -- ----------------------------------------------------------------------------
 -- 2. Habilitar Realtime en las tablas del torneo
@@ -30,7 +31,76 @@ alter publication supabase_realtime add table public.player_inventory;
 alter publication supabase_realtime add table public.modifier_activations;
 alter publication supabase_realtime add table public.active_effects;
 
--- Si alguna tabla ya estaba en la publicación, el ADD TABLE lanza aviso pero no falla.
+-- ----------------------------------------------------------------------------
+-- 2.B. Políticas de auto-registro de tiradas (Self-roll para jugadores móviles)
+-- ----------------------------------------------------------------------------
+create or replace function public.is_player_owner(pid uuid)
+returns boolean language sql security definer set search_path = public stable as $$
+  select exists (
+    select 1 from public.players p
+    where p.id = pid and p.user_id = auth.uid()
+  );
+$$;
+
+drop policy if exists games_update_own on public.player_games;
+create policy games_update_own on public.player_games
+  for update
+  using (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  )
+  with check (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  );
+
+drop policy if exists games_insert_own on public.player_games;
+create policy games_insert_own on public.player_games
+  for insert
+  with check (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  );
+
+drop policy if exists inventory_update_own on public.player_inventory;
+create policy inventory_update_own on public.player_inventory
+  for update
+  using (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  )
+  with check (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  );
+
+drop policy if exists inventory_insert_own on public.player_inventory;
+create policy inventory_insert_own on public.player_inventory
+  for insert
+  with check (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  );
+
+drop policy if exists activations_insert_own on public.modifier_activations;
+create policy activations_insert_own on public.modifier_activations
+  for insert
+  with check (
+    public.round_belongs_to_member(round_id)
+    and (actor_id is null or public.is_player_owner(actor_id))
+  );
+
+drop policy if exists effects_write_own on public.active_effects;
+create policy effects_write_own on public.active_effects
+  for all
+  using (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  )
+  with check (
+    public.round_belongs_to_member(round_id)
+    and public.is_player_owner(player_id)
+  );
 
 -- ----------------------------------------------------------------------------
 -- 3. Verificar que las políticas de lectura permiten al creador leer su torneo

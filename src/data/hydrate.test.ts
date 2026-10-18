@@ -148,9 +148,28 @@ describe("mergeRemoteState (pull del host)", () => {
     );
     const g1 = merged.games.find((g) => g.playerId === "p1")!;
     const g2 = merged.games.find((g) => g.playerId === "p2")!;
-    expect(g1.total).toBe(99); // remoto gana
+    expect(g1.total).toBe(99); // remoto gana con mismas versiones
     expect(g2.total).toBe(50); // nuevo se añade
     expect(merged.games).toHaveLength(2);
+  });
+
+  it("conserva el juego local si tiene mayor versión o más tiradas (evita reset a 0)", () => {
+    const state = emptyState();
+    // Jugador tira en el móvil: total 7, version 1, rolls [7]
+    state.games.push({
+      ...game("p1", 7),
+      version: 1,
+      rolls: [7],
+    });
+    // Llega pull de Supabase antes de sincronizar (versión vieja 0, sin tiradas)
+    const staleRemote = remote({
+      games: [{ ...game("p1", 0), version: 0, rolls: [] }],
+    });
+    const merged = mergeRemoteState(state, staleRemote);
+    const g = merged.games.find((x) => x.playerId === "p1")!;
+    expect(g.total).toBe(7);
+    expect(g.version).toBe(1);
+    expect(g.rolls).toEqual([7]);
   });
 
   it("torneo: gana el de updatedAt más reciente (no pisa cambios locales nuevos)", () => {

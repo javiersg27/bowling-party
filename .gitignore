@@ -34,3 +34,4 @@ Thumbs.db
 .probe.json
 .rpc*.json
 *.err
+supabase/.temp/

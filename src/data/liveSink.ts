@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LiveSync } from "./live";
-import type { SyncSink } from "./store";
+import { partyStore, type SyncSink } from "./store";
 import type { StateDiff } from "./sync";
 import type { MemberRole } from "../domain/types";
 
@@ -14,10 +14,9 @@ import type { MemberRole } from "../domain/types";
  *   4. borrados (en orden inverso para no dejar huérfanas)
  *
  * `actorId` es el `auth.uid()` real; se usa para la membership del jugador.
- * `actorPlayerId` es el `id` en la tabla `players` del usuario actual. Se
- *  necesita para que un jugador (no admin) pueda subir su propio juego en el
- *  self-roll (política `games_update_own`). Si se omite, el jugador no podrá
- *  subir sus propias partidas.
+ * `actorPlayerId` es el `id` en la tabla `players` del usuario actual (o un getter
+ *  dinámico). Se necesita para que un jugador (no admin) pueda subir su propio
+ *  juego en el self-roll (política `games_update_own`).
  *
  * Es **tolerante a fallos parciales**: cada fila se empuja de forma aislada y un
  * error (p. ej. el torneo demo con `created_by` "demo-admin", que no es un uuid
@@ -29,8 +28,8 @@ export function makeLiveSink(
   sb: SupabaseClient,
   actorId: string,
   actorRole: MemberRole = "player",
-  /** `id` del jugador en la tabla `players` del usuario actual (para self-roll). */
-  actorPlayerId?: string,
+  /** `id` del jugador en la tabla `players` del usuario actual (o getter) para self-roll. */
+  actorPlayerId?: string | (() => string | undefined),
 ): SyncSink {
   const sync = new LiveSync(sb, () => {});
 
@@ -83,17 +82,43 @@ export function makeLiveSink(
       for (const r of diff.rounds.upserted) await step(() => sync.pushRound(r));
       for (const a of diff.assignments.upserted) await step(() => sync.pushAssignment(a));
     }
+    const effectivePlayerId =
+      typeof actorPlayerId === "function"
+        ? actorPlayerId()
+        : actorPlayerId ?? partyStore.state?.players.find((p) => p.userId === actorId)?.id;
+
     // Juegos: admin sube todos; un jugador puede subir su propio juego (self-roll).
-    // La política `games_update_own` de Supabase permite UPDATE cuando el
+    // La política `games_update_own` de Supabase permite UPDATE/UPSERT cuando el
     // player_id del juego corresponde a players.user_id = auth.uid().
     for (const g of diff.games.upserted) {
-      if (isAdmin || (actorPlayerId && g.playerId === actorPlayerId)) {
+      const isOwnGame =
+        (effectivePlayerId && g.playerId === effectivePlayerId) ||
+        partyStore.state?.players.some((p) => p.id === g.playerId && p.userId === actorId);
+      if (isAdmin || isOwnGame) {
         await step(() => sync.pushGame(g));
       }
     }
-    for (const i of diff.inventory.upserted) await step(() => sync.pushInventory(i));
-    for (const e of diff.effects.upserted) await step(() => sync.pushEffect(e));
-    for (const a of diff.activations.upserted) await step(() => sync.pushActivation(a));
+    for (const i of diff.inventory.upserted) {
+      const isOwn =
+        isAdmin ||
+        (effectivePlayerId && i.playerId === effectivePlayerId) ||
+        partyStore.state?.players.some((p) => p.id === i.playerId && p.userId === actorId);
+      if (isOwn) await step(() => sync.pushInventory(i));
+    }
+    for (const e of diff.effects.upserted) {
+      const isOwn =
+        isAdmin ||
+        (effectivePlayerId && e.playerId === effectivePlayerId) ||
+        partyStore.state?.players.some((p) => p.id === e.playerId && p.userId === actorId);
+      if (isOwn) await step(() => sync.pushEffect(e));
+    }
+    for (const a of diff.activations.upserted) {
+      const isOwn =
+        isAdmin ||
+        (effectivePlayerId && a.actorId === effectivePlayerId) ||
+        partyStore.state?.players.some((p) => p.id === a.actorId && p.userId === actorId);
+      if (isOwn) await step(() => sync.pushActivation(a));
+    }
     // Eventos: pushEvent es no-op (feed decorativo desactivado). Se mantiene la
     // llamada para no perder el flujo cuando se reactive.
     for (const e of diff.events.upserted) await step(() => sync.pushEvent(e));

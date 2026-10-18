@@ -272,7 +272,16 @@ export class LiveSync {
 
   async pushGame(g: PlayerGame) {
     // La tabla no expone id en el motor; la unicidad es (round_id, player_id).
-    await this.upsert("player_games", gameToRow(g), "round_id,player_id");
+    // Intenta UPDATE primero (la fila normalmente ya fue creada por el admin al
+    // iniciar la ronda). Si no existe fila en la nube, recurre a upsert.
+    const row = gameToRow(g);
+    const { error: updErr, count } = await this.sb
+      .from("player_games")
+      .update(row, { count: "exact" })
+      .eq("round_id", g.roundId)
+      .eq("player_id", g.playerId);
+    if (!updErr && (count ?? 0) > 0) return;
+    await this.upsert("player_games", row, "round_id,player_id");
   }
 
   async pushInventory(i: InventoryItem) {
