@@ -10,6 +10,7 @@ import {
   startRound,
 } from "./engine";
 import { MODIFIER_CATALOG, modifierById } from "../domain/modifiers";
+import { DEFAULT_MODIFIER_SETTINGS } from "../domain/types";
 
 describe("motor concurrente y permisos de dominio", () => {
   function setup() {
@@ -232,10 +233,7 @@ describe("reparto de modificadores al finalizar ronda", () => {
   it("no otorga modificador si no hay ids habilitados", () => {
     const { state, t, a, b } = setup();
     const round = state.rounds.find((r) => r.kind === 1)!;
-    round.modifiersFrozen = {
-      ...round.modifiersFrozen,
-      enabledIds: [],
-    };
+    round.modifiersFrozen = { ...DEFAULT_MODIFIER_SETTINGS };
 
     const gameA = state.games.find((g) => g.playerId === a.id && g.roundId === round.id)!;
     recordRoll(state, {
