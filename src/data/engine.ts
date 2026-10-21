@@ -401,6 +401,53 @@ export function completeRound(state: EngineState, tournamentId: string, actorId:
       });
     }
   }
+  // ── Reparto de modificadores al finalizar la ronda ──────────────────────
+  // Todos los jugadores reciben un objeto, orden inverso por puntuación:
+  // menor puntuación = objetos mejores (épicos), mayor puntuación = objetos peores (comunes)
+  const roundPoints = playerPointsForRound(state, tournamentId, kind);
+  const roundPlayers = state.players.filter(
+    (p) => p.tournamentId === tournamentId && !p.banned,
+  );
+  const scoreMap = new Map(roundPoints.map((rp) => [rp.playerId, rp]));
+  const ranked = [...roundPlayers]
+    .map((p) => {
+      const pts = scoreMap.get(p.id) ?? { official: 0, bonus: 0, playerId: p.id };
+      return { playerId: p.id, total: totalScore(pts.official, pts.bonus) };
+    })
+    .sort((a, b) => a.total - b.total); // ascendente: peor puntuado primero
+
+  const roundSettings = round.modifiersFrozen ?? t.settings.modifiers;
+  const enabled = MODIFIER_CATALOG.filter((m) =>
+    roundSettings.enabledIds.includes(m.id),
+  );
+
+  for (let i = 0; i < ranked.length; i++) {
+    const { playerId } = ranked[i];
+    const place = i + 1;
+    const weights =
+      place === 1
+        ? roundSettings.weightsByPlace.last      // peor puntuado → objetos épicos (mejores)
+        : place === ranked.length
+          ? roundSettings.weightsByPlace.first   // mejor puntuado → objetos comunes (peores)
+          : roundSettings.weightsByPlace.middle;
+    const picked = rollModifier(enabled, weights, Math.random);
+    if (!picked) continue;
+    state.inventory.push({
+      id: uid("inv"),
+      playerId,
+      roundId: round.id,
+      modifierId: picked.id,
+      status: "held",
+      grantedAt: nowIso(),
+      grantedFrame: 10, // fin de ronda / juego completo
+    });
+    const player = state.players.find((p) => p.id === playerId)!;
+    emit(state, tournamentId, "item", `¡${player.displayName} consigue ${picked.name}!`, {
+      rarity: picked.rarity,
+      playerId: player.id,
+    });
+  }
+
   emit(state, tournamentId, "round_done", `Ronda ${kind} finalizada.`);
   audit(state, tournamentId, actorId, "complete_round", String(kind));
 }
@@ -454,12 +501,7 @@ export function recordRoll(
     state.effects = state.effects.filter((e) => !throwFx.consumeEffectIds.includes(e.id));
     const completed = frameJustCompleted(previous, game.rolls);
     if (completed) {
-      const settings = round.modifiersFrozen ?? t.settings.modifiers;
       const laneGames = state.games.filter((g) => g.roundId === round.id && g.laneId === game.laneId);
-      const allDone = laneGames.every((g) => scoreGame(g.rolls).frames.find((f) => f.index === completed)?.isComplete);
-      if (allDone && settings.checkpointFrames.includes(completed) && modifiersOn(round, t)) {
-        grantCheckpoint(state, round, game.laneId, completed, settings);
-      }
       for (const g of laneGames) {
         state.effects = state.effects.map((e) =>
           e.playerId === g.playerId && e.roundId === round.id
@@ -485,52 +527,8 @@ export function recordRoll(
   emit(state, t.id, "roll", `${player.displayName} derriba ${args.pins}`, { playerId: player.id, pins: args.pins });
 }
 
-function modifiersOn(round: Round, t: Tournament) {
-  if (round.kind === 1) return true;
-  if (round.kind === 3) return t.settings.scoring.round3ModifiersEnabled;
-  return false;
-}
-
-function grantCheckpoint(
-  state: EngineState,
-  round: Round,
-  laneId: string,
-  frame: number,
-  settings: ModifierSettings,
-) {
-  const laneGames = state.games.filter((g) => g.roundId === round.id && g.laneId === laneId);
-  const ranking = laneRanking(laneGames);
-  const enabled = MODIFIER_CATALOG.filter((m) => settings.enabledIds.includes(m.id));
-  for (const row of ranking) {
-    const game = laneGames.find((g) => g.playerId === row.playerId)!;
-    const held = state.inventory.filter((i) => i.playerId === game.playerId && i.roundId === round.id && i.status === "held");
-    if (held.length >= settings.inventoryLimit) continue;
-    const retry = state.effects.find((e) => e.playerId === game.playerId && e.kind === "retry");
-    const weights =
-      row.place === 1
-        ? settings.weightsByPlace.first
-        : row.place === ranking.length
-          ? settings.weightsByPlace.last
-          : settings.weightsByPlace.middle;
-    const picked = rollModifier(enabled, weights, Math.random);
-    if (!picked) continue;
-    const item: InventoryItem = {
-      id: uid("inv"),
-      playerId: game.playerId,
-      roundId: round.id,
-      modifierId: picked.id,
-      status: "held",
-      grantedAt: nowIso(),
-      grantedFrame: frame,
-    };
-    state.inventory.push(item);
-    const player = state.players.find((p) => p.id === game.playerId)!;
-    emit(state, player.tournamentId, "item", `¡${player.displayName} consigue ${picked.name}!`, {
-      rarity: picked.rarity,
-      playerId: player.id,
-    });
-    void retry;
-  }
+function modifiersOn(_round: Round, _t: Tournament) {
+  return true;
 }
 
 export function activateModifier(
